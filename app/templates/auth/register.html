@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Create Account{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto mt-10 bg-white p-8 rounded-xl shadow-lg border border-gray-100">
+    <h2 class="text-3xl font-extrabold text-gray-900 text-center mb-6">Register</h2>
+    <form method="POST">
+        {{ form.hidden_tag() }}
+        <div class="space-y-4">
+            <!-- Full Name -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Full Name</label>
+                {{ form.name(class="mt-1 block w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-md") }}
+                {% if form.name.errors %}
+                    <p class="mt-1 text-sm text-red-600">{{ form.name.errors[0] }}</p>
+                {% endif %}
+            </div>
+
+            <!-- Email -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Email</label>
+                {{ form.email(class="mt-1 block w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-md") }}
+                {% if form.email.errors %}
+                    <p class="mt-1 text-sm text-red-600">{{ form.email.errors[0] }}</p>
+                {% endif %}
+            </div>
+
+            <!-- Role -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Role</label>
+                {{ form.role(class="mt-1 block w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-md") }}
+                {% if form.role.errors %}
+                    <p class="mt-1 text-sm text-red-600">{{ form.role.errors[0] }}</p>
+                {% endif %}
+            </div>
+
+            <!-- Level -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Level (Students only)</label>
+                {{ form.level(class="mt-1 block w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-md") }}
+                {% if form.level.errors %}
+                    <p class="mt-1 text-sm text-red-600">{{ form.level.errors[0] }}</p>
+                {% endif %}
+            </div>
+
+            <!-- Password with Show/Hide -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Password</label>
+                <div class="relative">
+                    {{ form.password(class="mt-1 block w-full px-4 py-2 pr-10 bg-gray-50 border border-gray-300 rounded-md", id="password") }}
+                    <button type="button" onclick="togglePassword('password', 'togglePassword1')" 
+                            class="absolute inset-y-0 right-0 pr-3 flex items-center text-sm text-gray-600 hover:text-gray-800">
+                        <span id="togglePassword1">👁️</span>
+                    </button>
+                </div>
+                {% if form.password.errors %}
+                    <p class="mt-1 text-sm text-red-600">{{ form.password.errors[0] }}</p>
+                {% endif %}
+            </div>
+
+            <!-- Confirm Password with Show/Hide -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Confirm Password</label>
+                <div class="relative">
+                    {{ form.confirm_password(class="mt-1 block w-full px-4 py-2 pr-10 bg-gray-50 border border-gray-300 rounded-md", id="confirm_password") }}
+                    <button type="button" onclick="togglePassword('confirm_password', 'togglePassword2')" 
+                            class="absolute inset-y-0 right-0 pr-3 flex items-center text-sm text-gray-600 hover:text-gray-800">
+                        <span id="togglePassword2">👁️</span>
+                    </button>
+                </div>
+                {% if form.confirm_password.errors %}
+                    <p class="mt-1 text-sm text-red-600">{{ form.confirm_password.errors[0] }}</p>
+                {% endif %}
+            </div>
+
+            <button type="submit" class="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition duration-200">
+                Create Account
+            </button>
+        </div>
+    </form>
+
+    <p class="mt-4 text-center text-sm text-gray-600">
+        Already have an account? 
+        <a href="{{ url_for('auth.login') }}" class="text-indigo-600 hover:text-indigo-500 font-medium">
+            Sign in here
+        </a>
+    </p>
+</div>
+
+<script>
+function togglePassword(fieldId, iconId) {
+    const passwordField = document.getElementById(fieldId);
+    const toggleIcon = document.getElementById(iconId);
+    
+    if (passwordField.type === 'password') {
+        passwordField.type = 'text';
+        toggleIcon.textContent = '🙈';  // "hide" icon
+    } else {
+        passwordField.type = 'password';
+        toggleIcon.textContent = '👁️';  // "show" icon
+    }
+}
+</script>
+{% endblock %}

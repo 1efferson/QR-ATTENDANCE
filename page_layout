@@ -1,0 +1,30 @@
+attendance_app/
+├── app/
+│   ├── __init__.py           # The Application Factory (Initializes DB, Login, Blueprints)
+│   ├── models.py             # SQLAlchemy models (User, Attendance)
+│   ├── forms.py              # Flask-WTF validation forms
+│   ├── gsheets.py            # Google Sheets API helper functions
+│   ├── routes/
+│   │   ├── auth/
+│   │   │   ├── __init__.py   # Blueprint definition for Auth
+│   │   │   └── routes.py     # Login, Register, Logout logic
+│   │   ├── instructor/
+│   │   │   ├── __init__.py   # Blueprint definition for Instructor
+│   │   │   └── routes.py     # QR Code generation & instructor dashboard
+│   │   └── student/
+│   │       ├── __init__.py   # Blueprint definition for Student
+│   │       └── routes.py     # QR scanning logic & database entry
+│   ├── static/               # Global CSS/JS and Images
+│   │   ├── css/              #  Custom Tailwind config/styles
+│   │   └── qrcodes/          # FOLDER: Generated QR .png images live here
+│   └── templates/            # Jinja2 Templates
+│       ├── base.html         # Main Layout (Tailwind CDN, Navbar, Flashed messages)
+│       ├── auth/             # login.html, register.html
+│       ├── instructor/       # dashboard.html, view_qr.html
+│       └── student/          # scan_success.html, confirm_attendance.html
+├── app.py                    # Entry Point 
+├── config.py                 # Secret Keys, SQLALCHEMY_DATABASE_URI, Google Credentials
+├── requirements.txt          # flask, flask-sqlalchemy, flask-login, flask-wtf, qrcode, gspread
+├── instance/attendance.db                 # Created automatically by Flask for your .db file
+├── venv
+└── page_layout 

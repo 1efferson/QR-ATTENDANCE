@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Login{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto mt-10 bg-white p-8 rounded-xl shadow-lg border border-gray-100">
+    <h2 class="text-3xl font-extrabold text-gray-900 text-center mb-6">Welcome Back</h2>
+    <form method="POST">
+        {{ form.hidden_tag() }}
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Email Address</label>
+                {{ form.email(class="mt-1 block w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500") }}
+                {% if form.email.errors %}
+                    <p class="mt-1 text-sm text-red-600">{{ form.email.errors[0] }}</p>
+                {% endif %}
+            </div>
+            
+            <!-- Password with Show/Hide -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Password</label>
+                <div class="relative">
+                    {{ form.password(class="mt-1 block w-full px-4 py-3 pr-10 bg-gray-50 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500", id="password") }}
+                    <button type="button" onclick="togglePassword('password', 'togglePasswordIcon')" 
+                            class="absolute inset-y-0 right-0 pr-3 flex items-center text-sm text-gray-600 hover:text-gray-800">
+                        <span id="togglePasswordIcon">👁️</span>
+                    </button>
+                </div>
+                {% if form.password.errors %}
+                    <p class="mt-1 text-sm text-red-600">{{ form.password.errors[0] }}</p>
+                {% endif %}
+            </div>
+
+            <button type="submit" class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition duration-200">
+                Sign In
+            </button>
+        </div>
+    </form>
+
+    <p class="mt-4 text-center text-sm text-gray-600">
+        Don't have an account? 
+        <a href="{{ url_for('auth.register') }}" class="text-indigo-600 hover:text-indigo-500 font-medium">
+            Sign up here
+        </a>
+    </p>
+</div>
+<!-- show password or hash it in login/register fields -->
+<script>
+function togglePassword(fieldId, iconId) {
+    const passwordField = document.getElementById(fieldId);
+    const toggleIcon = document.getElementById(iconId);
+    
+    if (passwordField.type === 'password') {
+        passwordField.type = 'text';
+        toggleIcon.textContent = '🙈';
+    } else {
+        passwordField.type = 'password';
+        toggleIcon.textContent = '👁️';
+    }
+}
+</script>
+{% endblock %}
