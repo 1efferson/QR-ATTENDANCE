@@ -26,7 +26,7 @@ def mark_attendance():
     # Accept either the scanned QR text or the manually typed code
     scanned_code = data.get('qr_content')
     
-    # Get the master secret from your app config (loaded from .env)
+    # Get the master secret from app config (loaded from .env)
     master_secret = current_app.config.get('MASTER_QR_SECRET')
     
     if not scanned_code or scanned_code.strip() != master_secret:
@@ -42,7 +42,7 @@ def mark_attendance():
     if existing:
         return jsonify({'success': False, 'message': 'Attendance already recorded for today'}), 400
     
-    # Mark attendance (Using a placeholder for course_code since you aren't using multiple)
+    # Mark attendance (Using a placeholder for course_code since we aren't using multiple)
     attendance = Attendance(
         user_id=current_user.id,
         course_code="General Attendance" 
