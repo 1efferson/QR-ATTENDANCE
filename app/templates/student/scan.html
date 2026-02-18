@@ -10,19 +10,19 @@
         </div>
 
         <!-- Camera Preview -->
-        <div class="relative bg-black rounded-lg overflow-hidden mb-4" style="aspect-ratio: 4/3;">
-            <video id="video" class="w-full h-full object-cover" autoplay playsinline></video>
-            <canvas id="canvas" class="hidden"></canvas>
-            
-            <!-- Scanning frame overlay -->
-            <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div class="w-64 h-64 border-4 border-indigo-500 rounded-lg shadow-lg"></div>
-            </div>
+        <div id="reader" class="rounded-lg overflow-hidden mb-4"></div>
+
+        <!-- Start Camera Button -->
+        <div class="text-center mb-4">
+            <button id="startBtn"
+                    class="bg-indigo-600 text-white px-6 py-3 rounded-md hover:bg-indigo-700 font-medium">
+                📷 Tap to Start Camera
+            </button>
         </div>
 
         <!-- Status Messages -->
         <div id="status" class="text-center mb-4">
-            <p class="text-sm text-gray-500">Initializing camera...</p>
+            <p class="text-sm text-gray-500">Press the button above to start scanning</p>
         </div>
 
         <!-- Success/Error Messages -->
@@ -34,11 +34,11 @@
                 Can't scan? Enter code manually
             </summary>
             <form id="manualForm" class="mt-4 space-y-3">
-                <input type="text" 
-                       id="manualCode" 
+                <input type="text"
+                       id="manualCode"
                        placeholder="Enter session code"
                        class="w-full px-4 py-2 border border-gray-300 rounded-md">
-                <button type="submit" 
+                <button type="submit"
                         class="w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700">
                     Submit Code
                 </button>
@@ -47,7 +47,7 @@
 
         <!-- View History Link -->
         <div class="mt-6 text-center">
-            <a href="{{ url_for('student.history') }}" 
+            <a href="{{ url_for('student.history') }}"
                class="text-sm text-indigo-600 hover:text-indigo-800">
                 View Attendance History
             </a>
@@ -55,123 +55,72 @@
     </div>
 </div>
 
-<!-- Include QR Code Scanner Library -->
-<script src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
 <script>
-const video = document.getElementById('video');
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-const statusDiv = document.getElementById('status');
 const messageDiv = document.getElementById('message');
-let scanning = true;
+const statusDiv = document.getElementById('status');
+const startBtn = document.getElementById('startBtn');
+const html5QrCode = new Html5Qrcode("reader");
 
-// Start camera
-async function startCamera() {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: 'environment' } // Use back camera on mobile
-        });
-        video.srcObject = stream;
-        video.play();
-        statusDiv.innerHTML = '<p class="text-sm text-green-600">✓ Camera ready - Point at QR code</p>';
-        requestAnimationFrame(scanQRCode);
-    } catch (err) {
-        console.error('Camera error:', err);
-        statusDiv.innerHTML = '<p class="text-sm text-red-600">❌ Camera access denied. Please enable camera permissions.</p>';
-    }
-}
-
-// Scan QR Code from video feed
-function scanQRCode() {
-    if (!scanning) return;
-
-    if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        canvas.height = video.videoHeight;
-        canvas.width = video.videoWidth;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height);
-        
-        if (code) {
-            handleQRCode(code.data);
-            return; // Stop scanning after successful read
-        }
-    }
-    
-    requestAnimationFrame(scanQRCode);
-}
-
-// Handle scanned QR code
-async function handleQRCode(data) {
-    scanning = false;
-    statusDiv.innerHTML = '<p class="text-sm text-blue-600">🔍 Processing...</p>';
-    
-    try {
-        // Parse QR code data (expected format: "session_id:course_code")
-        const [sessionId, courseCode] = data.split(':');
-        
-        if (!sessionId || !courseCode) {
-            throw new Error('Invalid QR code format');
-        }
-        
-        // Send to backend
-        const response = await fetch('{{ url_for("student.mark_attendance") }}', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                session_id: sessionId,
-                course_code: courseCode
-            })
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            showMessage('success', `✓ ${result.message}`);
-            // Optionally redirect after delay
-            setTimeout(() => {
-                window.location.href = '{{ url_for("student.history") }}';
-            }, 2000);
-        } else {
-            showMessage('error', `❌ ${result.message}`);
-            // Resume scanning after 3 seconds
-            setTimeout(() => {
-                scanning = true;
-                requestAnimationFrame(scanQRCode);
-            }, 3000);
-        }
-    } catch (error) {
-        showMessage('error', '❌ Error processing QR code: ' + error.message);
-        setTimeout(() => {
-            scanning = true;
-            requestAnimationFrame(scanQRCode);
-        }, 3000);
-    }
-}
-
-// Show status message
 function showMessage(type, text) {
     messageDiv.className = `p-4 rounded-md ${type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`;
     messageDiv.textContent = text;
     messageDiv.classList.remove('hidden');
-    
-    statusDiv.innerHTML = '';
 }
 
-// Manual code entry
+async function submitAttendance(content) {
+    const response = await fetch('{{ url_for("student.mark_attendance") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // We just send the "content" now, no more splitting
+        body: JSON.stringify({ qr_content: content })
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+        showMessage('success', `✓ ${result.message}`);
+        setTimeout(() => window.location.href = '{{ url_for("student.history") }}', 2000);
+    } else {
+        showMessage('error', `❌ ${result.message}`);
+        // If it's the scanner, we might want to restart it after an error
+        if (html5QrCode.getState() !== 2) setTimeout(() => startScanner(), 3000);
+    }
+}
+
+async function startScanner() {
+    startBtn.classList.add('hidden');
+    statusDiv.innerHTML = '<p class="text-sm text-blue-600">Starting camera...</p>';
+
+    try {
+        await html5QrCode.start(
+            { facingMode: "environment" },
+            { fps: 10, qrbox: { width: 250, height: 250 } },
+            async (decodedText) => {
+                await html5QrCode.stop().catch(() => {});
+                await submitAttendance(decodedText);
+            },
+            () => { /* scanning... */ }
+        );
+        statusDiv.innerHTML = '<p class="text-sm text-green-600">✓ Camera ready</p>';
+    } catch (err) {
+        statusDiv.innerHTML = '<p class="text-sm text-red-600">❌ Camera access denied.</p>';
+        startBtn.classList.remove('hidden');
+    }
+}
+
+startBtn.addEventListener('click', startScanner);
+
+// Manual Form Logic
 document.getElementById('manualForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const code = document.getElementById('manualCode').value.trim();
-    if (code) {
-        await handleQRCode(code);
-    }
-});
+    if (!code) return;
 
-// Start camera on page load
-startCamera();
+    // Stop scanner if it's running
+    await html5QrCode.stop().catch(() => {});
+    await submitAttendance(code);
+});
 </script>
 {% endblock %}

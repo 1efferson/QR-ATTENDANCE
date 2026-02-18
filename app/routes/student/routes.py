@@ -1,5 +1,5 @@
 
-from flask import render_template, redirect, url_for, flash, request, jsonify
+from flask import render_template, redirect, url_for, flash, request, jsonify, current_app
 from flask_login import login_required, current_user
 from . import student_bp
 from app import db
@@ -19,32 +19,33 @@ def scan():
 @student_bp.route('/mark-attendance', methods=['POST'])
 @login_required
 def mark_attendance():
-    """Process scanned QR code and mark attendance."""
     if current_user.role != 'student':
         return jsonify({'success': False, 'message': 'Access denied'}), 403
     
     data = request.get_json()
-    session_id = data.get('session_id')
-    course_code = data.get('course_code')
+    # Accept either the scanned QR text or the manually typed code
+    scanned_code = data.get('qr_content')
     
-    if not session_id or not course_code:
-        return jsonify({'success': False, 'message': 'Invalid QR code'}), 400
+    # Get the master secret from app config (loaded from .env)
+    master_secret = current_app.config.get('MASTER_QR_SECRET')
     
-    # Check if already marked attendance for this session
-    existing = Attendance.query.filter_by(
-        user_id=current_user.id,
-        course_code=course_code
-    ).filter(
-        Attendance.timestamp >= datetime.utcnow().date()
+    if not scanned_code or scanned_code.strip() != master_secret:
+        return jsonify({'success': False, 'message': 'Invalid QR Code or Manual Code'}), 400
+    
+    # Check if they already signed in today
+    today = datetime.utcnow().date()
+    existing = Attendance.query.filter(
+        Attendance.user_id == current_user.id,
+        db.func.date(Attendance.timestamp) == today
     ).first()
     
     if existing:
-        return jsonify({'success': False, 'message': 'Already marked attendance for this class today'}), 400
+        return jsonify({'success': False, 'message': 'Attendance already recorded for today'}), 400
     
-    # Create attendance record
+    # Mark attendance (Using a placeholder for course_code since we aren't using multiple)
     attendance = Attendance(
         user_id=current_user.id,
-        course_code=course_code
+        course_code="General Attendance" 
     )
     
     db.session.add(attendance)
@@ -52,9 +53,7 @@ def mark_attendance():
     
     return jsonify({
         'success': True, 
-        'message': f'Attendance marked for {course_code}!',
-        'student': current_user.name,
-        'course': course_code
+        'message': f'Attendance marked! Welcome, {current_user.name}.'
     })
 
 @student_bp.route('/history')
