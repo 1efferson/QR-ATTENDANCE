@@ -7,9 +7,12 @@ load_dotenv()
 class Config:
     """Base configuration."""
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-key-please-change-in-prod')
+
+    # This matches the text you put in the QR code
+    MASTER_QR_SECRET = os.environ.get('ATTENDANCE_SECRET_KEY')
     
     # Database Configuration
-    # Defaults to SQLite for dev, but can be overridden with a PostgreSQL URL in .env
+    # Defaults to SQLite for dev, but PostgreSQL URL in prod. switched in .env
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///attendance.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
