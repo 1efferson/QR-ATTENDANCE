@@ -21,8 +21,7 @@ def create_app(config_class=Config):
     login_manager.login_view = 'auth.login'
     login_manager.login_message_category = 'info'
 
-    # Ensure QR code directory exists
-    os.makedirs(app.config['QR_FOLDER'], exist_ok=True)
+    os.makedirs(app.instance_path, exist_ok=True)
 
     # Register Blueprints
     # Note: These imports are inside the factory to avoid circular dependencies
