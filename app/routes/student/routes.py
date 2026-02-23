@@ -57,20 +57,6 @@ def mark_attendance():
         'message': f'Attendance marked! Welcome, {current_user.name}.'
     })
 
-# @student_bp.route('/history')
-# @login_required
-# def history():
-#     """View attendance history (optional page)."""
-#     if current_user.role != 'student':
-#         flash("Access denied: Students only.", "error")
-#         return redirect(url_for('instructor.dashboard'))
-    
-#     attendance_records = Attendance.query.filter_by(
-#         user_id=current_user.id
-#     ).order_by(Attendance.timestamp.desc()).all()
-    
-#     return render_template('student/history.html', attendance_records=attendance_records)
-
 
 @student_bp.route('/history')
 @login_required
