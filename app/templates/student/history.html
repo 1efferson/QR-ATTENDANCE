@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Attendance History{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-10">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <h2 class="text-2xl font-bold text-gray-900 dark:text-gray-400">📋 Attendance History</h2>
+            <p class="text-sm text-gray-400 mt-1">A record of all your attendance sessions</p>
+        </div>
+        <a href="{{ url_for('student.scan') }}"
+           class="text-sm px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition">
+            ← Back to Scanner
+        </a>
+    </div>
+
+    {% if grouped_records %}
+        {% for month, records in grouped_records.items() %}
+
+        <!-- Month Card -->
+        <div class="mb-6 rounded-xl overflow-hidden shadow-lg">
+
+            <!-- Month Header -->
+            <div class="flex items-center justify-between px-6 py-4 bg-indigo-600">
+                <h5 class="text-white font-semibold text-base">{{ month }}</h5>
+                <span class="text-xs font-semibold text-white bg-white/20 px-3 py-1 rounded-full">
+                    {{ records | length }} session{{ 's' if records | length != 1 else '' }}
+                </span>
+            </div>
+
+            <!-- Table -->
+            <div class="bg-gray-900 overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead>
+                        <tr class="border-b-2 border-indigo-600">
+                            <th class="pl-6 py-3 text-xs uppercase tracking-wider text-gray-400 w-12">#</th>
+                            <th class="py-3 text-xs uppercase tracking-wider text-gray-400">Course</th>
+                            <th class="py-3 text-xs uppercase tracking-wider text-gray-400">Day</th>
+                            <th class="py-3 text-xs uppercase tracking-wider text-gray-400">Date & Time</th>
+                            <th class="py-3 text-xs uppercase tracking-wider text-gray-400 text-center pr-6">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for record in records %}
+                        <tr class="border-b border-gray-800 hover:bg-gray-800 transition">
+                            <td class="pl-6 py-3 text-gray-500">{{ loop.index }}</td>
+                            <td class="py-3 font-medium text-gray-100">{{ record.course_code }}</td>
+                            <td class="py-3 text-gray-300">{{ record.timestamp.strftime('%A') }}</td>
+                            <td class="py-3 text-gray-400">{{ record.timestamp.strftime('%d %B %Y, %I:%M %p') }}</td>
+                            <td class="py-3 text-center pr-6">
+                                <span class="text-xs font-semibold px-3 py-1 rounded-full bg-green-500/10 text-green-400">
+                                    ✓ Present
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+        {% endfor %}
+
+    {% else %}
+        <!-- Empty State -->
+        <div class="text-center py-20">
+            <div class="text-5xl mb-4">📭</div>
+            <h5 class="text-lg font-semibold text-gray-400">No attendance records yet</h5>
+            <p class="text-sm text-gray-500 mt-1">Scan a QR code to record your first session.</p>
+            <a href="{{ url_for('student.scan') }}"
+               class="inline-block mt-4 px-5 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition">
+                Go to Scanner
+            </a>
+        </div>
+    {% endif %}
+
+</div>
+{% endblock %}
