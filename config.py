@@ -24,7 +24,7 @@ class Config:
     # IP Whitelisting Configuration
     SCHOOL_IP_RANGES = os.environ.get('SCHOOL_IP_RANGES', '').split(',')
     ENABLE_IP_WHITELISTING = os.environ.get('ENABLE_IP_WHITELISTING', 'true').lower() == 'true'
-    IP_WHITELIST_BYPASS = os.environ.get('IP_WHITELIST_BYPASS', '127.0.0.1,::1').split(',')
+    IP_WHITELIST_BYPASS = os.environ.get('IP_WHITELIST_BYPASS', '127.0.0.1,::1').split(',') # bybass for localhost testing, add your device IPs to .env for testing from specific devices
     
 
     # Static Paths
