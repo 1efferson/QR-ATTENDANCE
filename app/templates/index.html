@@ -19,7 +19,7 @@
                         Go to Dashboard
                     </a>
                 {% elif current_user.role == 'student' %}
-                    <a href="#" 
+                    <a href="{{ url_for('student.scan') }}" 
                        class="bg-indigo-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-indigo-700 transition">
                         Scan QR Code
                     </a>
