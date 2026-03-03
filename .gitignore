@@ -1,23 +1,29 @@
-# Virtual Environment
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+.pyc
+
+# Virtual environments
 venv/
 env/
+.venv/
 
-# Python cache
-__pycache__/
-*.pyc
-*.pyo
+# Flask
+instance/
+.webassets-cache
+
+# Databases
+*.db
+*.sqlite3
 
 # Environment variables
 .env
-
-# Flask instance folder
-instance/
-
-# SQLite database
-*.db
+.env.*
 
 # macOS
 .DS_Store
 
-# VSCode
+# IDEs
 .vscode/
+.idea/
