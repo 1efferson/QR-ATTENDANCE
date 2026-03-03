@@ -20,6 +20,13 @@ class Config:
     GOOGLE_SHEETS_CREDENTIALS_FILE = os.environ.get('GOOGLE_SHEETS_CREDENTIALS_FILE', 'credentials.json')
     GOOGLE_SHEET_ID = os.environ.get('GOOGLE_SHEET_ID')
     
+
+    # IP Whitelisting Configuration
+    SCHOOL_IP_RANGES = os.environ.get('SCHOOL_IP_RANGES', '').split(',')
+    ENABLE_IP_WHITELISTING = os.environ.get('ENABLE_IP_WHITELISTING', 'true').lower() == 'true'
+    IP_WHITELIST_BYPASS = os.environ.get('IP_WHITELIST_BYPASS', '127.0.0.1,::1').split(',') # bybass for localhost testing, add your device IPs to .env for testing from specific devices
+    
+
     # Static Paths
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
     

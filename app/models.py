@@ -38,7 +38,21 @@ class Attendance(db.Model):
     course_code = db.Column(db.String(20), nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     
-    # You could add session_id here if you want to link to a specific class session
+    # New fields for IP tracking
+    ip_address = db.Column(db.String(45), nullable=True)  # IPv6 can be up to 45 chars
+    user_agent = db.Column(db.String(256), nullable=True)  # Browser info
     
     def __repr__(self):
         return f'<Attendance {self.user_id} - {self.course_code}>'
+
+# New model for tracking blocked attempts
+class BlockedAttempt(db.Model):
+    __tablename__ = 'blocked_attempts'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    ip_address = db.Column(db.String(45), nullable=False)
+    user_agent = db.Column(db.String(256), nullable=True)
+    reason = db.Column(db.String(100), nullable=False)  # 'invalid_ip', 'invalid_qr', etc.
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    attempted_data = db.Column(db.JSON, nullable=True)  # Store what they tried to submit
