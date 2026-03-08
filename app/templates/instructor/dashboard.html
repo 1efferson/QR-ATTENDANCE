@@ -2,32 +2,457 @@
 {% block title %}Instructor Dashboard{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto">
-    <div class="flex justify-between items-center mb-8">
-        <h1 class="text-2xl font-bold text-gray-800">My Courses</h1>
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Error State -->
+    {% if error %}
+    <div class="bg-red-50 border border-red-200 rounded-lg p-6 mb-8">
+        <div class="flex items-center">
+            <svg class="w-6 h-6 text-red-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <p class="text-red-800 font-medium">An error occurred while loading the dashboard. Please refresh the page.</p>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- No Data State -->
+    {% if no_data %}
+    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-12 text-center">
+        <svg class="w-16 h-16 text-yellow-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+        <h2 class="text-2xl font-bold text-gray-900 mb-2">No Attendance Data Yet</h2>
+        <p class="text-gray-600 mb-6">There are no attendance records in the system. Students need to check in first.</p>
+        <a href="{{ url_for('instructor.generate_qr') }}" class="inline-flex items-center px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Generate QR Code
+        </a>
+    </div>
+    {% else %}
+    
+    <!-- Header with Level Selector and Export Button -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+        <h1 class="text-3xl font-bold text-gray-900">Attendance Dashboard</h1>
+        <div class="flex flex-wrap gap-3">
+            <!-- Level filter: populated from distinct levels in the User table -->
+            <select id="levelSelect" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                <option value="">All Levels</option>
+                {% for lvl in levels %}
+                <option value="{{ lvl }}" {% if lvl == level %}selected{% endif %}>{{ lvl }}</option>
+                {% endfor %}
+            </select>
+            <select id="daysSelect" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                <option value="7" {% if days == 7 %}selected{% endif %}>Last 7 days</option>
+                <option value="14" {% if days == 14 %}selected{% endif %}>Last 14 days</option>
+                <option value="30" {% if days == 30 %}selected{% endif %}>Last 30 days</option>
+                <option value="60" {% if days == 60 %}selected{% endif %}>Last 60 days</option>
+                <option value="90" {% if days == 90 %}selected{% endif %}>Last 90 days</option>
+            </select>
+            
+            <!-- Export Button -->
+            <button id="exportBtn" class="inline-flex items-center px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                Export CSV
+            </button>
+        </div>
     </div>
 
-    <div class="bg-white shadow-md rounded-lg overflow-hidden">
-        <table class="min-w-full leading-normal">
-            <thead>
-                <tr class="bg-gray-100 text-gray-600 uppercase text-sm leading-normal">
-                    <th class="py-3 px-6 text-left">Course Code</th>
-                    <th class="py-3 px-6 text-left">Date</th>
-                    <th class="py-3 px-6 text-center">Status</th>
-                </tr>
-            </thead>
-            <tbody class="text-gray-600 text-sm font-light">
-                {% for session in sessions %}
-                <tr class="border-b border-gray-200 hover:bg-gray-50">
-                    <td class="py-3 px-6 text-left font-medium">{{ session.course_code }}</td>
-                    <td class="py-3 px-6 text-left">{{ session.timestamp.strftime('%Y-%m-%d') }}</td>
-                    <td class="py-3 px-6 text-center">
-                        <span class="bg-green-200 text-green-700 py-1 px-3 rounded-full text-xs">Active</span>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <!-- Stats Cards (Queries 1, 2, 3) -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <!-- Today's Check-ins -->
+        <div class="bg-white rounded-lg shadow p-6 border-l-4 border-blue-500 hover:shadow-lg transition">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-gray-600">Today's Check-ins</p>
+                    <p class="text-3xl font-bold text-gray-900 mt-2">{{ today_checkins }}</p>
+                    <!-- Show which level is active, or "All Levels" if none selected -->
+                    <p class="text-xs text-gray-500 mt-1">{{ level if level else 'All Levels' }}</p>
+                </div>
+                <div class="bg-blue-100 rounded-full p-3">
+                    <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- Expected Students -->
+        <div class="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500 hover:shadow-lg transition">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-gray-600">Expected Students</p>
+                    <p class="text-3xl font-bold text-gray-900 mt-2">{{ expected_students }}</p>
+                    <p class="text-xs text-gray-500 mt-1">{{ level if level else 'All Levels' }}</p>
+                </div>
+                <div class="bg-purple-100 rounded-full p-3">
+                    <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- Today's Attendance Rate -->
+        <div class="bg-white rounded-lg shadow p-6 border-l-4 {% if today_percentage >= 75 %}border-green-500{% elif today_percentage >= 50 %}border-yellow-500{% else %}border-red-500{% endif %} hover:shadow-lg transition">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-gray-600">Today's Attendance</p>
+                    <p class="text-3xl font-bold text-gray-900 mt-2">{{ today_percentage }}%</p>
+                    <p class="text-xs text-gray-500 mt-1">
+                        {% if today_percentage >= 75 %}
+                        Excellent turnout
+                        {% elif today_percentage >= 50 %}
+                        Moderate turnout
+                        {% else %}
+                        Low turnout
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="{% if today_percentage >= 75 %}bg-green-100{% elif today_percentage >= 50 %}bg-yellow-100{% else %}bg-red-100{% endif %} rounded-full p-3">
+                    <svg class="w-8 h-8 {% if today_percentage >= 75 %}text-green-600{% elif today_percentage >= 50 %}text-yellow-600{% else %}text-red-600{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+        <!-- Top 5 Earliest Students (Query 5) -->
+        <div class="bg-white rounded-lg shadow hover:shadow-lg transition">
+            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-purple-50">
+                <h2 class="text-lg font-semibold text-gray-900">🏆 Top 5 Earliest Students Today</h2>
+            </div>
+            <div class="p-6">
+                {% if top_5_earliest %}
+                <div class="space-y-3">
+                    {% for student in top_5_earliest %}
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition cursor-pointer student-row" data-student-id="{{ student.student_id }}">
+                        <div class="flex items-center gap-3">
+                            <span class="flex items-center justify-center w-8 h-8 bg-indigo-100 text-indigo-600 rounded-full font-bold text-sm">
+                                {{ loop.index }}
+                            </span>
+                            <div>
+                                <p class="font-medium text-gray-900">{{ student.student_name }}</p>
+                                <p class="text-sm text-gray-500">{{ student.student_email }}</p>
+                                <p class="text-xs text-gray-400">{{ student.student_level or 'N/A' }}</p>
+                            </div>
+                        </div>
+                        <span class="text-lg font-semibold text-green-600">{{ student.checkin_time }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center py-8">
+                    <svg class="w-16 h-16 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <p class="text-gray-500">No check-ins today yet</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Students Below 60% (Query 7) -->
+        <div class="bg-white rounded-lg shadow hover:shadow-lg transition">
+            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-red-50 to-orange-50">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-semibold text-gray-900">⚠️ Students Below 60% Attendance</h2>
+                    {% if students_below_60 %}
+                    <span class="px-3 py-1 bg-red-600 text-white text-xs font-bold rounded-full">{{ students_below_60|length }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="p-6">
+                {% if students_below_60 %}
+                <div class="space-y-3 max-h-96 overflow-y-auto">
+                    {% for student in students_below_60 %}
+                    <div class="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200 hover:bg-red-100 transition cursor-pointer student-row" data-student-id="{{ student.student_id }}">
+                        <div>
+                            <p class="font-medium text-gray-900">{{ student.student_name }}</p>
+                            <p class="text-sm text-gray-500">{{ student.student_email }}</p>
+                            <p class="text-xs text-gray-400 mt-1">Level: {{ student.student_level or 'N/A' }} · {{ student.days_attended }}/{{ student.total_days }} days</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-2xl font-bold text-red-600">{{ student.attendance_pct }}%</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center py-8">
+                    <svg class="w-16 h-16 text-green-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <p class="text-green-600 font-medium">✓ All students above 60%</p>
+                    <p class="text-sm text-gray-500 mt-1">Great attendance performance!</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Average Check-in Times (Query 4) -->
+    <div class="bg-white rounded-lg shadow mb-8 hover:shadow-lg transition">
+        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-cyan-50">
+            <h2 class="text-lg font-semibold text-gray-900">⏰ Average Check-in Times (Last {{ days }} days)</h2>
+        </div>
+        <div class="overflow-x-auto">
+            {% if avg_checkin_times %}
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student Name</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Level</th>
+                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Avg Check-in Time</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for student in avg_checkin_times %}
+                    <tr class="hover:bg-gray-50 cursor-pointer transition student-row" data-student-id="{{ student.student_id }}">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ student.student_name }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ student.student_email }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">{{ student.student_level or 'N/A' }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center font-semibold">{{ student.avg_time }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="text-center py-12">
+                <p class="text-gray-500">No attendance data available for the selected period</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Attendance Percentage per Student (Query 6) -->
+    <div class="bg-white rounded-lg shadow mb-8 hover:shadow-lg transition">
+        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-pink-50">
+            <h2 class="text-lg font-semibold text-gray-900">📊 Student Attendance Percentages (Last {{ days }} days)</h2>
+        </div>
+        <div class="overflow-x-auto">
+            {% if student_percentages %}
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student Name</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Level</th>
+                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Days Attended</th>
+                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Attendance %</th>
+                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for student in student_percentages %}
+                    <tr class="hover:bg-gray-50 {% if student.is_below_threshold %}bg-red-50{% endif %} cursor-pointer transition student-row" data-student-id="{{ student.student_id }}">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ student.student_name }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ student.student_email }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">{{ student.student_level or 'N/A' }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ student.days_attended }}/{{ student.total_days }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-center">
+                            <span class="text-lg font-bold {% if student.attendance_pct >= 75 %}text-green-600{% elif student.attendance_pct >= 60 %}text-yellow-600{% else %}text-red-600{% endif %}">
+                                {{ student.attendance_pct }}%
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-center">
+                            {% if student.attendance_pct >= 75 %}
+                            <span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Excellent</span>
+                            {% elif student.attendance_pct >= 60 %}
+                            <span class="px-3 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">Good</span>
+                            {% else %}
+                            <span class="px-3 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">At Risk</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="text-center py-12">
+                <p class="text-gray-500">No students found</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Student Details Modal -->
+<div id="studentModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xl font-bold text-gray-900" id="modalStudentName">Student Details</h3>
+            <button onclick="closeStudentModal()" class="text-gray-400 hover:text-gray-600">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+        <div id="modalContent" class="mt-4">
+            <div class="flex justify-center items-center py-8">
+                <svg class="animate-spin h-8 w-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </div>
+        </div>
     </div>
 </div>
+
+<script>
+    // Dynamic level and date range selection
+    const levelSelect = document.getElementById('levelSelect');
+    const daysSelect = document.getElementById('daysSelect');
+    const exportBtn = document.getElementById('exportBtn');
+    
+    // Reload page with new level/days filters when dropdowns change
+    [levelSelect, daysSelect].forEach(select => {
+        select.addEventListener('change', function() {
+            const level = levelSelect.value;
+            const days = daysSelect.value;
+            // level can be empty string (All Levels) — still pass it so route can handle it
+            window.location.href = `{{ url_for('instructor.dashboard') }}?level=${level}&days=${days}`;
+        });
+    });
+    
+    // Handle CSV export — passes level and days as query params
+    if (exportBtn) {
+        exportBtn.addEventListener('click', function() {
+            const level = levelSelect.value;
+            const days = daysSelect.value;
+            window.location.href = `{{ url_for('instructor.export_attendance_csv') }}?level=${level}&days=${days}`;
+        });
+    }
+    
+    // EVENT DELEGATION: Single listener for all student rows
+    document.addEventListener('click', function(e) {
+        const studentRow = e.target.closest('.student-row');
+        if (studentRow) {
+            const studentId = studentRow.dataset.studentId;
+            if (studentId) {
+                showStudentDetails(studentId);
+            }
+        }
+    });
+    
+    // Show student details modal
+    function showStudentDetails(studentId) {
+        const modal = document.getElementById('studentModal');
+        const modalContent = document.getElementById('modalContent');
+        const level = levelSelect.value;
+        const days = daysSelect.value;
+        
+        modal.classList.remove('hidden');
+        
+        // Show loading spinner
+        modalContent.innerHTML = `
+            <div class="flex justify-center items-center py-8">
+                <svg class="animate-spin h-8 w-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </div>
+        `;
+        
+        // Fetch student details — passes level and days so API can filter if needed
+        fetch(`{{ url_for('instructor.get_student_attendance_api', student_id=0) }}`.replace('/0/', `/${studentId}/`) + `?level=${level}&days=${days}`)
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    const student = data.student;
+                    const records = data.attendance_records;
+                    
+                    document.getElementById('modalStudentName').textContent = student.name;
+                    
+                    let html = `
+                        <div class="mb-4 p-4 bg-gray-50 rounded-lg">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p class="text-sm text-gray-600">Email</p>
+                                    <p class="font-medium">${escapeHtml(student.email)}</p>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-600">Level</p>
+                                    <p class="font-medium">${escapeHtml(student.level || 'N/A')}</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <h4 class="font-semibold text-gray-900 mb-3">Recent Attendance (${data.total_records} records)</h4>
+                        <div class="max-h-96 overflow-y-auto">
+                    `;
+                    
+                    if (records.length > 0) {
+                        html += '<div class="space-y-2">';
+                        records.forEach(record => {
+                            html += `
+                                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                                    <div>
+                                        <p class="font-medium text-gray-900">${escapeHtml(record.date)}</p>
+                                        <p class="text-sm text-gray-500">${escapeHtml(record.level || 'N/A')}</p>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="font-semibold text-indigo-600">${escapeHtml(record.time)}</p>
+                                        <p class="text-xs text-gray-400">${escapeHtml(record.ip_address || 'N/A')}</p>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        html += '</div>';
+                    } else {
+                        html += '<p class="text-center text-gray-500 py-8">No attendance records found</p>';
+                    }
+                    
+                    html += '</div>';
+                    modalContent.innerHTML = html;
+                } else {
+                    showError('Error loading student details');
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching student details:', error);
+                showError('Error loading student details. Please try again.');
+            });
+    }
+    
+    function showError(message) {
+        const modalContent = document.getElementById('modalContent');
+        modalContent.innerHTML = `
+            <div class="text-center py-8">
+                <svg class="w-16 h-16 text-red-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <p class="text-red-600">${escapeHtml(message)}</p>
+            </div>
+        `;
+    }
+    
+    // XSS Protection
+    function escapeHtml(text) {
+        const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+        return String(text).replace(/[&<>"']/g, m => map[m]);
+    }
+    
+    function closeStudentModal() {
+        document.getElementById('studentModal').classList.add('hidden');
+    }
+    
+    document.getElementById('studentModal').addEventListener('click', function(e) {
+        if (e.target === this) closeStudentModal();
+    });
+    
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeStudentModal();
+    });
+</script>
 {% endblock %}

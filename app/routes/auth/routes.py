@@ -27,7 +27,7 @@ def register():
             name=form.name.data,
             email=form.email.data,
             role=form.role.data,
-            level=form.level.data
+            level=form.level.data.lower()
         )
         user.set_password(form.password.data) # Hashes the password
         
