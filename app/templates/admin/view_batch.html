@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% block title %}{{ batch.name }} - Batch Details{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Header -->
+    <div class="mb-8">
+        <a href="{{ url_for('admin.batches') }}" class="text-indigo-600 hover:text-indigo-800 flex items-center mb-4">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+            </svg>
+            Back to Batches
+        </a>
+        
+        <div class="flex justify-between items-start">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">{{ batch.name }}</h1>
+                <p class="text-gray-600 mt-1">{{ batch.description or 'No description' }}</p>
+            </div>
+            <div class="flex gap-3">
+                <a href="{{ url_for('admin.edit_batch', batch_id=batch.id) }}" class="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition">
+                    Edit Batch
+                </a>
+                <a href="{{ url_for('admin.manage_approved_students', batch_id=batch.id) }}" class="px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition">
+                    Manage Approved List
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <!-- Current Level -->
+        <div class="bg-white rounded-lg shadow p-6 border-l-4 
+            {% if batch.current_level == 'beginner' %}border-green-500
+            {% elif batch.current_level == 'intermediate' %}border-blue-500
+            {% else %}border-purple-500{% endif %}">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-gray-600">Current Level</p>
+                    <p class="text-2xl font-bold text-gray-900 mt-2">{{ batch.current_level|capitalize }}</p>
+                </div>
+                <div class="
+                    {% if batch.current_level == 'beginner' %}bg-green-100
+                    {% elif batch.current_level == 'intermediate' %}bg-blue-100
+                    {% else %}bg-purple-100{% endif %} rounded-full p-3">
+                    <svg class="w-8 h-8 
+                        {% if batch.current_level == 'beginner' %}text-green-600
+                        {% elif batch.current_level == 'intermediate' %}text-blue-600
+                        {% else %}text-purple-600{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- Registered Students -->
+        <div class="bg-white rounded-lg shadow p-6 border-l-4 border-indigo-500">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-gray-600">Registered</p>
+                    <p class="text-2xl font-bold text-gray-900 mt-2">{{ registered_count }}</p>
+                </div>
+                <div class="bg-indigo-100 rounded-full p-3">
+                    <svg class="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- Approved Names -->
+        <div class="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-gray-600">Approved Names</p>
+                    <p class="text-2xl font-bold text-gray-900 mt-2">{{ approved_count }}</p>
+                </div>
+                <div class="bg-green-100 rounded-full p-3">
+                    <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pending Registration -->
+        <div class="bg-white rounded-lg shadow p-6 border-l-4 border-yellow-500">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-gray-600">Pending</p>
+                    <p class="text-2xl font-bold text-gray-900 mt-2">{{ pending_count }}</p>
+                </div>
+                <div class="bg-yellow-100 rounded-full p-3">
+                    <svg class="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Promote Batch Section -->
+    {% if batch.current_level != 'advanced' %}
+    <div class="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-lg p-6 mb-8">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center">
+                <div class="bg-indigo-100 rounded-full p-3 mr-4">
+                    <svg class="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900">Ready to Promote?</h3>
+                    <p class="text-gray-600 mt-1">
+                        Move this batch from <strong>{{ batch.current_level }}</strong> to 
+                        <strong>{% if batch.current_level == 'beginner' %}Intermediate{% else %}Advanced{% endif %}</strong>
+                    </p>
+                    <p class="text-sm text-gray-500 mt-1">
+                        All {{ registered_count }} registered students will be promoted automatically
+                    </p>
+                </div>
+            </div>
+            <form method="POST" action="{{ url_for('admin.promote_batch', batch_id=batch.id) }}" onsubmit="return confirm('Are you sure you want to promote this batch? All students will move to the next level.');">
+                <button type="submit" class="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition">
+                    Promote Batch
+                </button>
+            </form>
+        </div>
+    </div>
+    {% else %}
+    <div class="bg-purple-50 border border-purple-200 rounded-lg p-6 mb-8">
+        <div class="flex items-center">
+            <div class="bg-purple-100 rounded-full p-3 mr-4">
+                <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900">Maximum Level Reached</h3>
+                <p class="text-gray-600 mt-1">This batch is at the <strong>Advanced</strong> level (highest level)</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Registered Students & Approved List Tabs -->
+    <div class="bg-white rounded-lg shadow mb-8">
+        <!-- Tabs -->
+        <div class="border-b border-gray-200">
+            <nav class="flex -mb-px">
+                <button onclick="showTab('registered')" id="tab-registered" class="tab-button active px-6 py-4 border-b-2 border-indigo-500 text-indigo-600 font-medium">
+                    Registered Students ({{ registered_count }})
+                </button>
+                <button onclick="showTab('approved')" id="tab-approved" class="tab-button px-6 py-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium">
+                    Approved List ({{ approved_count }})
+                </button>
+            </nav>
+        </div>
+
+        <!-- Registered Students Tab -->
+        <div id="content-registered" class="tab-content p-6">
+            {% if registered_students %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                            <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Level</th>
+                            <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Registered</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for student in registered_students %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ student.name }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ student.email }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-center">
+                                <span class="px-3 py-1 text-xs font-semibold rounded-full 
+                                    {% if student.level == 'beginner' %}bg-green-100 text-green-800
+                                    {% elif student.level == 'intermediate' %}bg-blue-100 text-blue-800
+                                    {% else %}bg-purple-100 text-purple-800{% endif %}">
+                                    {{ student.level|capitalize }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
+                                {{ student.created_at.strftime('%Y-%m-%d') if student.created_at else 'N/A' }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-12">
+                <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+                </svg>
+                <h3 class="text-lg font-medium text-gray-900 mb-2">No registered students yet</h3>
+                <p class="text-gray-600">Students will appear here once they register</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Approved List Tab -->
+        <div id="content-approved" class="tab-content hidden p-6">
+            {% if approved_students %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expected Email</th>
+                            <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Registered Email</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for approved, registered_user_id, registered_email in approved_students %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ approved.name }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ approved.email or 'Not specified' }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-center">
+                                {% if approved.is_registered %}
+                                <span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Registered</span>
+                                {% else %}
+                                <span class="px-3 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">Pending</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                                {{ registered_email or '-' }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-12">
+                <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                <h3 class="text-lg font-medium text-gray-900 mb-2">No approved names yet</h3>
+                <p class="text-gray-600 mb-4">Add student names to allow them to register</p>
+                <a href="{{ url_for('admin.manage_approved_students', batch_id=batch.id) }}" class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition">
+                    Manage Approved List
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Attendance Stats (Last 30 Days) -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold text-gray-900">Attendance Statistics</h2>
+            <span class="text-sm text-gray-500">Last 30 days</span>
+        </div>
+        <div class="flex items-center">
+            <div class="flex-1">
+                <p class="text-3xl font-bold text-indigo-600">{{ attendance_count }}</p>
+                <p class="text-gray-600 mt-1">Total check-ins</p>
+            </div>
+            {% if registered_count > 0 %}
+            <div class="text-right">
+                <p class="text-2xl font-semibold text-gray-700">{{ (attendance_count / (registered_count * 30) * 100)|round(1) }}%</p>
+                <p class="text-sm text-gray-500">Average daily attendance</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+    function showTab(tabName) {
+        // Hide all tab contents
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.add('hidden');
+        });
+        
+        // Remove active state from all tabs
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.classList.remove('active', 'border-indigo-500', 'text-indigo-600');
+            button.classList.add('border-transparent', 'text-gray-500');
+        });
+        
+        // Show selected tab content
+        document.getElementById('content-' + tabName).classList.remove('hidden');
+        
+        // Add active state to selected tab
+        const activeTab = document.getElementById('tab-' + tabName);
+        activeTab.classList.add('active', 'border-indigo-500', 'text-indigo-600');
+        activeTab.classList.remove('border-transparent', 'text-gray-500');
+    }
+</script>
+{% endblock %}
