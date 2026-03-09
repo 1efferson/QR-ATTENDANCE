@@ -27,3 +27,7 @@ instance/
 # IDEs
 .vscode/
 .idea/
+
+
+# cli command
+admin_status.py
