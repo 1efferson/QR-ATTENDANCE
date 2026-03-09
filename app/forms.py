@@ -10,17 +10,15 @@ class RegistrationForm(FlaskForm):
     email = StringField('Email', 
                         validators=[DataRequired(), Email()])
     
-    role = SelectField('Role', 
-                       choices=[('student', 'Student'), ('instructor', 'Instructor')],
-                       validators=[DataRequired()])
+    # Batch selection (choices will be populated dynamically in the route)
+    batch = SelectField('Batch/Class', coerce=int, validators=[DataRequired()])
     
-    # Updated levels as requested
-    level = SelectField('Skill Level (Students Only)', 
-                        choices=[('N/A', 'Instructor / Staff'), 
-                                 ('beginner', 'Beginner'), 
+    # Updated to match batch system
+    level = SelectField('Level', 
+                        choices=[('beginner', 'Beginner'), 
                                  ('intermediate', 'Intermediate'), 
                                  ('advanced', 'Advanced')],
-                        default='beginner')
+                        validators=[DataRequired()])
     
     password = PasswordField('Password', 
                              validators=[DataRequired(), Length(min=6)])
