@@ -112,7 +112,7 @@ class User(UserMixin, db.Model):
     name = db.Column(db.String(100), nullable=False)
     level = db.Column(db.String(50), nullable=True)  # "beginner", "intermediate", "advanced"
     role = db.Column(db.String(20), default='student', nullable=False)  # 'student', 'instructor', 'admin'
-    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
     # Link student to their assigned batch
     batch_id = db.Column(db.Integer,db.ForeignKey('batches.id', name='fk_users_batch_id'),nullable=True)
     
