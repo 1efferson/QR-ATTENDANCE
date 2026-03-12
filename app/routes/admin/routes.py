@@ -15,7 +15,7 @@ from flask_login import login_required, current_user
 from functools import wraps
 from sqlalchemy import func, and_, case
 from app import db
-from app.models import User, Batch, ApprovedStudent, Attendance
+from app.models import User, Batch, ApprovedStudent, Attendance, BatchSchedule
 from datetime import datetime, timedelta
 
 from . import admin_bp
@@ -144,30 +144,34 @@ def batches():
         })
     
     return render_template('admin/batches.html', batches=batches)
-
+         
 
 @admin_bp.route('/batches/create', methods=['GET', 'POST'])
 @admin_required
 def create_batch():
-    """Create new batch"""
+    """Create new batch with class schedule"""
     if request.method == 'POST':
-        name = request.form.get('name', '').strip()
+        name        = request.form.get('name', '').strip()
         description = request.form.get('description', '').strip()
-        
-        # Validation
+        class_days  = request.form.getlist('class_days')  # e.g. ['0', '2', '4']
+
         if not name:
             flash('Batch name is required', 'error')
             return redirect(url_for('admin.create_batch'))
-        
-        # Check duplicates (database level)
+
+        if not class_days:
+            flash('Please select at least one class day', 'error')
+            return redirect(url_for('admin.create_batch'))
+
+        # Check duplicates
         existing_count = db.session.query(func.count(Batch.id)).filter(
             func.lower(Batch.name) == name.lower()
         ).scalar()
-        
+
         if existing_count > 0:
             flash(f'Batch "{name}" already exists', 'error')
             return redirect(url_for('admin.create_batch'))
-        
+
         # Create batch
         batch = Batch(
             name=name,
@@ -175,14 +179,20 @@ def create_batch():
             current_level='beginner',
             is_active=True
         )
-        
         db.session.add(batch)
+        db.session.flush()  # Gets batch.id without committing
+
+        # Save class schedule
+        for day in class_days:
+            db.session.add(BatchSchedule(batch_id=batch.id, weekday=int(day)))
+
         db.session.commit()
-        
+
         flash(f'Batch "{name}" created successfully!', 'success')
         return redirect(url_for('admin.batches'))
-    
+
     return render_template('admin/create_batch.html')
+
 
 
 @admin_bp.route('/batches/<int:batch_id>')
@@ -255,20 +265,31 @@ def view_batch(batch_id):
 @admin_bp.route('/batches/<int:batch_id>/edit', methods=['GET', 'POST'])
 @admin_required
 def edit_batch(batch_id):
-    """Edit batch details"""
+    """Edit batch details and class schedule"""
     batch = Batch.query.get_or_404(batch_id)
-    
+
     if request.method == 'POST':
-        batch.name = request.form.get('name', '').strip()
+        batch.name        = request.form.get('name', '').strip()
         batch.description = request.form.get('description', '').strip()
-        batch.is_active = request.form.get('is_active') == 'on'
-        
+        batch.is_active   = request.form.get('is_active') == 'on'
+        class_days        = request.form.getlist('class_days')
+
+        if not class_days:
+            flash('Please select at least one class day', 'error')
+            return redirect(url_for('admin.edit_batch', batch_id=batch_id))
+
+        # Replace existing schedule — delete old, insert new
+        BatchSchedule.query.filter_by(batch_id=batch.id).delete()
+        for day in class_days:
+            db.session.add(BatchSchedule(batch_id=batch.id, weekday=int(day)))
+
         db.session.commit()
         flash(f'Batch "{batch.name}" updated successfully!', 'success')
         return redirect(url_for('admin.view_batch', batch_id=batch_id))
-    
-    return render_template('admin/edit_batch.html', batch=batch)
 
+    # Pass current schedule days to template so checkboxes are pre-selected
+    current_days = {s.weekday for s in batch.schedules}
+    return render_template('admin/edit_batch.html', batch=batch, current_days=current_days)
 
 @admin_bp.route('/batches/<int:batch_id>/promote', methods=['POST'])
 @admin_required
