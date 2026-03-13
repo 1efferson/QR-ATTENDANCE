@@ -1,13 +1,16 @@
 """
 SQLAlchemy Query Utilities for Instructor Dashboard
 ALL mathematical operations pushed to database level using SQLAlchemy func
-Optimized for PostgreSQL performance with reusable query labels
 Filters students by `level` and/or `batch_id` independently
+Absence and Personal Time status computed inline per student
 """
 from datetime import datetime, date, timedelta
 from sqlalchemy import func, cast, Float, case, and_
-from app.models import Attendance, User
+from app.models import Attendance, User, Absence
 from app import db
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class AttendanceQueries:
@@ -17,6 +20,7 @@ class AttendanceQueries:
     def total_checkins_today(level=None, batch_id=None):
         """
         Total check-ins for today.
+        Only counts non-personal-time scans (actual class attendance).
         Optionally filtered by student level and/or batch.
         """
         today_start = datetime.combine(date.today(), datetime.min.time())
@@ -29,6 +33,7 @@ class AttendanceQueries:
         ).filter(
             Attendance.timestamp >= today_start,
             Attendance.timestamp <= today_end,
+            Attendance.is_personal_time == False,
             User.role == 'student'
         )
 
@@ -64,11 +69,13 @@ class AttendanceQueries:
     def attendance_percentage_today(level=None, batch_id=None):
         """
         Attendance percentage for today.
+        Only counts non-personal-time scans.
         Optionally filtered by student level and/or batch.
         """
         today_start = datetime.combine(date.today(), datetime.min.time())
         today_end   = datetime.combine(date.today(), datetime.max.time())
 
+        # Total expected students scalar subquery
         students_sq = db.session.query(func.count(User.id)).filter(User.role == 'student')
         if level:
             students_sq = students_sq.filter(User.level == level)
@@ -76,11 +83,13 @@ class AttendanceQueries:
             students_sq = students_sq.filter(User.batch_id == batch_id)
         students_scalar = students_sq.scalar_subquery()
 
+        # Total check-ins today (non-PT only) scalar subquery
         checkins_sq = db.session.query(
             func.count(Attendance.id)
         ).join(User, User.id == Attendance.user_id).filter(
             Attendance.timestamp >= today_start,
             Attendance.timestamp <= today_end,
+            Attendance.is_personal_time == False,
             User.role == 'student'
         )
         if level:
@@ -101,7 +110,8 @@ class AttendanceQueries:
     @staticmethod
     def student_average_checkin_time(level=None, days=30, batch_id=None):
         """
-        Calculate each student's average check-in time.
+        Calculate each student's average check-in time over the period.
+        Excludes personal time scans from the average.
         Optionally filtered by student level and/or batch.
         """
         cutoff_date = datetime.now() - timedelta(days=days)
@@ -120,7 +130,8 @@ class AttendanceQueries:
             Attendance, User.id == Attendance.user_id
         ).filter(
             User.role == 'student',
-            Attendance.timestamp >= cutoff_date
+            Attendance.timestamp >= cutoff_date,
+            Attendance.is_personal_time == False
         )
 
         if level:
@@ -140,12 +151,12 @@ class AttendanceQueries:
                 avg_time_str = "N/A"
 
             results.append({
-                'student_id':      user_id,
-                'student_name':    name,
-                'student_email':   email,
-                'student_level':   student_level,
+                'student_id':       user_id,
+                'student_name':     name,
+                'student_email':    email,
+                'student_level':    student_level,
                 'student_batch_id': student_batch_id,
-                'avg_time':        avg_time_str,
+                'avg_time':         avg_time_str,
                 'avg_time_decimal': avg_decimal
             })
 
@@ -154,7 +165,8 @@ class AttendanceQueries:
     @staticmethod
     def top_5_earliest_students(level=None, target_date=None, batch_id=None):
         """
-        Return the top 5 earliest students today.
+        Return the top 5 earliest students for a given day.
+        Excludes personal time scans.
         Optionally filtered by student level and/or batch.
         """
         if target_date is None:
@@ -175,7 +187,8 @@ class AttendanceQueries:
         ).filter(
             User.role == 'student',
             Attendance.timestamp >= day_start,
-            Attendance.timestamp <= day_end
+            Attendance.timestamp <= day_end,
+            Attendance.is_personal_time == False
         )
 
         if level:
@@ -206,16 +219,21 @@ class AttendanceQueries:
     @staticmethod
     def attendance_percentage_per_student(level=None, days=30, batch_id=None):
         """
-        Calculate attendance percentage per student.
-        Optionally filtered by student level and/or batch.
+        Calculate attendance percentage per student over a date range.
+        Also computes today's status (present/absent/PT) inline per student
+        using correlated subqueries — no extra queries needed in the route.
+        Excludes personal time from attendance count.
         total_days uses .scalar_subquery() to avoid cartesian product.
         """
         cutoff_date = datetime.now() - timedelta(days=days)
+        today       = date.today()
 
+        # Total class days in the period (distinct dates with non-PT scans)
         total_days_sq = db.session.query(
             func.count(func.distinct(func.date(Attendance.timestamp)))
         ).join(User, User.id == Attendance.user_id).filter(
             Attendance.timestamp >= cutoff_date,
+            Attendance.is_personal_time == False,
             User.role == 'student'
         )
         if level:
@@ -224,12 +242,31 @@ class AttendanceQueries:
             total_days_sq = total_days_sq.filter(User.batch_id == batch_id)
         total_days_scalar = total_days_sq.scalar_subquery()
 
+        # Per-student days attended (non-PT only)
         days_attended_count = func.count(func.distinct(func.date(Attendance.timestamp)))
 
+        # Attendance percentage expression (reused in ORDER BY)
         attendance_pct_expr = case(
             (total_days_scalar == 0, cast(0, Float)),
             else_=(cast(days_attended_count, Float) / cast(total_days_scalar, Float) * 100)
         )
+
+        # Correlated subquery: did this student get an Absence record today?
+        absent_today_sq = db.session.query(
+            func.count(Absence.id)
+        ).filter(
+            Absence.user_id == User.id,
+            Absence.date == today
+        ).correlate(User).scalar_subquery()
+
+        # Correlated subquery: did this student scan as P.T today?
+        pt_today_sq = db.session.query(
+            func.count(Attendance.id)
+        ).filter(
+            Attendance.user_id == User.id,
+            func.date(Attendance.timestamp) == today,
+            Attendance.is_personal_time == True
+        ).correlate(User).scalar_subquery()
 
         query = db.session.query(
             User.id,
@@ -240,12 +277,15 @@ class AttendanceQueries:
             days_attended_count.label('days_attended'),
             total_days_scalar.label('total_days'),
             attendance_pct_expr.label('attendance_pct'),
-            (attendance_pct_expr < 60).label('is_below_threshold')
+            (attendance_pct_expr < 60).label('is_below_threshold'),
+            (absent_today_sq > 0).label('is_absent_today'),
+            (pt_today_sq > 0).label('is_pt_today')
         ).outerjoin(
             Attendance,
             and_(
                 User.id == Attendance.user_id,
-                Attendance.timestamp >= cutoff_date
+                Attendance.timestamp >= cutoff_date,
+                Attendance.is_personal_time == False
             )
         ).filter(User.role == 'student')
 
@@ -259,17 +299,22 @@ class AttendanceQueries:
         ).order_by(attendance_pct_expr.desc())
 
         results = []
-        for user_id, name, email, student_level, student_batch_id, days_attended, total_days, pct, below_threshold in query.all():
+        for (user_id, name, email, student_level, student_batch_id,
+             days_attended, total_days, pct, below_threshold,
+             is_absent_today, is_pt_today) in query.all():
+
             results.append({
-                'student_id':       user_id,
-                'student_name':     name,
-                'student_email':    email,
-                'student_level':    student_level,
-                'student_batch_id': student_batch_id,
-                'attendance_pct':   round(pct, 2) if pct is not None else 0.0,
-                'days_attended':    days_attended or 0,
-                'total_days':       total_days or 0,
-                'is_below_threshold': below_threshold
+                'student_id':         user_id,
+                'student_name':       name,
+                'student_email':      email,
+                'student_level':      student_level,
+                'student_batch_id':   student_batch_id,
+                'attendance_pct':     round(pct, 2) if pct is not None else 0.0,
+                'days_attended':      days_attended or 0,
+                'total_days':         total_days or 0,
+                'is_below_threshold': below_threshold,
+                'is_absent_today':    bool(is_absent_today),
+                'is_pt_today':        bool(is_pt_today)
             })
 
         return results
@@ -277,7 +322,8 @@ class AttendanceQueries:
     @staticmethod
     def students_below_threshold(threshold=60, level=None, days=30, batch_id=None):
         """
-        Flag students below attendance threshold.
+        Flag students below the given attendance threshold.
+        Excludes personal time from attendance count.
         Optionally filtered by student level and/or batch.
         """
         cutoff_date = datetime.now() - timedelta(days=days)
@@ -286,6 +332,7 @@ class AttendanceQueries:
             func.count(func.distinct(func.date(Attendance.timestamp)))
         ).join(User, User.id == Attendance.user_id).filter(
             Attendance.timestamp >= cutoff_date,
+            Attendance.is_personal_time == False,
             User.role == 'student'
         )
         if level:
@@ -314,7 +361,8 @@ class AttendanceQueries:
             Attendance,
             and_(
                 User.id == Attendance.user_id,
-                Attendance.timestamp >= cutoff_date
+                Attendance.timestamp >= cutoff_date,
+                Attendance.is_personal_time == False
             )
         ).filter(User.role == 'student')
 
@@ -334,15 +382,104 @@ class AttendanceQueries:
         results = []
         for user_id, name, email, student_level, student_batch_id, days_attended, total_days, pct in query.all():
             results.append({
+                'student_id':         user_id,
+                'student_name':       name,
+                'student_email':      email,
+                'student_level':      student_level,
+                'student_batch_id':   student_batch_id,
+                'attendance_pct':     round(pct, 2) if pct is not None else 0.0,
+                'days_attended':      days_attended or 0,
+                'total_days':         total_days or 0,
+                'is_below_threshold': True
+            })
+
+        return results
+
+    @staticmethod
+    def todays_absences(level=None, batch_id=None):
+        """
+        Returns students marked absent today from the Absence table.
+        Populated by the nightly scheduler at 9pm.
+        Optionally filtered by level and/or batch.
+        """
+        today = date.today()
+
+        query = db.session.query(
+            Absence,
+            User.name.label('student_name'),
+            User.email.label('student_email'),
+            User.level.label('student_level'),
+            User.batch_id.label('student_batch_id')
+        ).join(
+            User, User.id == Absence.user_id
+        ).filter(
+            Absence.date == today,
+            User.role == 'student'
+        )
+
+        if level:
+            query = query.filter(User.level == level)
+        if batch_id:
+            query = query.filter(Absence.batch_id == batch_id)
+
+        query = query.order_by(User.name)
+
+        results = []
+        for absence, name, email, student_level, student_batch_id in query.all():
+            results.append({
+                'absence_id':       absence.id,
+                'student_id':       absence.user_id,
+                'student_name':     name,
+                'student_email':    email,
+                'student_level':    student_level,
+                'student_batch_id': student_batch_id,
+                'date':             absence.date,
+                'notified':         absence.notified
+            })
+
+        return results
+
+    @staticmethod
+    def todays_personal_time(level=None, batch_id=None):
+        """
+        Returns students who scanned today on a non-class day (P.T).
+        Optionally filtered by level and/or batch.
+        """
+        today_start = datetime.combine(date.today(), datetime.min.time())
+        today_end   = datetime.combine(date.today(), datetime.max.time())
+
+        query = db.session.query(
+            User.id,
+            User.name,
+            User.email,
+            User.level,
+            User.batch_id,
+            Attendance.timestamp
+        ).join(
+            Attendance, User.id == Attendance.user_id
+        ).filter(
+            User.role == 'student',
+            Attendance.timestamp >= today_start,
+            Attendance.timestamp <= today_end,
+            Attendance.is_personal_time == True
+        )
+
+        if level:
+            query = query.filter(User.level == level)
+        if batch_id:
+            query = query.filter(User.batch_id == batch_id)
+
+        query = query.order_by(User.name)
+
+        results = []
+        for user_id, name, email, student_level, student_batch_id, timestamp in query.all():
+            results.append({
                 'student_id':       user_id,
                 'student_name':     name,
                 'student_email':    email,
                 'student_level':    student_level,
                 'student_batch_id': student_batch_id,
-                'attendance_pct':   round(pct, 2) if pct is not None else 0.0,
-                'days_attended':    days_attended or 0,
-                'total_days':       total_days or 0,
-                'is_below_threshold': True
+                'checkin_time':     timestamp.strftime('%H:%M:%S')
             })
 
         return results
@@ -354,13 +491,13 @@ class AttendanceQueries:
         Pass level=None for all levels; batch_id=None for all batches.
         """
         return {
-            'level':            level,
-            'today_checkins':   AttendanceQueries.total_checkins_today(level, batch_id),
-            'today_percentage': AttendanceQueries.attendance_percentage_today(level, batch_id),
-            'expected_students': AttendanceQueries.total_expected_students(level, batch_id),
-            'top_5_earliest':   AttendanceQueries.top_5_earliest_students(level, batch_id=batch_id),
-            'average_checkin_times': AttendanceQueries.student_average_checkin_time(level, days, batch_id),
-            'students_below_60': AttendanceQueries.students_below_threshold(60, level, days, batch_id),
+            'level':                   level,
+            'today_checkins':          AttendanceQueries.total_checkins_today(level, batch_id),
+            'today_percentage':        AttendanceQueries.attendance_percentage_today(level, batch_id),
+            'expected_students':       AttendanceQueries.total_expected_students(level, batch_id),
+            'top_5_earliest':          AttendanceQueries.top_5_earliest_students(level, batch_id=batch_id),
+            'average_checkin_times':   AttendanceQueries.student_average_checkin_time(level, days, batch_id),
+            'students_below_60':       AttendanceQueries.students_below_threshold(60, level, days, batch_id),
             'all_student_percentages': AttendanceQueries.attendance_percentage_per_student(level, days, batch_id),
-            'period_days':      days
+            'period_days':             days
         }
