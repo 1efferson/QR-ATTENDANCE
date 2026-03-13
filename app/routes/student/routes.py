@@ -87,7 +87,7 @@ def mark_attendance():
 
     # Build response message
     if is_personal_time:
-        message = f'Scan recorded as Personal Time (P.T). Welcome, {current_user.name}.'
+        message = f'Scan recorded. Welcome, {current_user.name}.'
     else:
         message = f'Attendance marked! Welcome, {current_user.name}.'
 
