@@ -1,523 +1,648 @@
 {% extends "base.html" %}
+
 {% block title %}Instructor Dashboard{% endblock %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="min-h-screen bg-gray-50">
 
-    <!-- Error State -->
-    {% if error %}
-    <div class="bg-red-50 border border-red-200 rounded-lg p-6 mb-8">
-        <div class="flex items-center">
-            <svg class="w-6 h-6 text-red-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-            </svg>
-            <p class="text-red-800 font-medium">An error occurred while loading the dashboard. Please refresh the page.</p>
-        </div>
-    </div>
-    {% endif %}
-
-    <!-- No Data State -->
-    {% if no_data %}
-    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-12 text-center">
-        <svg class="w-16 h-16 text-yellow-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-        </svg>
-        <h2 class="text-2xl font-bold text-gray-900 mb-2">No Attendance Data Yet</h2>
-        <p class="text-gray-600 mb-6">There are no attendance records in the system. Students need to check in first.</p>
-        <a href="{{ url_for('instructor.generate_qr') }}" class="inline-flex items-center px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition">
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-            </svg>
-            Generate QR Code
-        </a>
-    </div>
-    {% else %}
-
-    <!-- Header -->
-    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-        <h1 class="text-3xl font-bold text-gray-900">Attendance Dashboard</h1>
-
-        <!-- Active filter pills -->
-        <div class="flex flex-wrap gap-2 text-sm">
+  <!-- ───────────────────────────── PAGE HEADER ───────────────────────────── -->
+  <div class="bg-white border-b border-gray-200 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
+      <div class="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 class="text-2xl font-bold text-gray-900">Instructor Dashboard</h1>
+          <p class="text-sm text-gray-500 mt-0.5">
+            {{ now.strftime('%A, %d %B %Y') if now else '' }}
             {% if selected_batch %}
-                {% for batch in batches %}
-                {% if batch.id == selected_batch %}
-                <span class="inline-flex items-center gap-1 px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full font-medium">
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
-                    </svg>
-                    {{ batch.name }}
-                </span>
-                {% endif %}
-                {% endfor %}
+              · <span class="font-medium text-indigo-600">{{ selected_batch.name }}</span>
             {% endif %}
             {% if level %}
-            <span class="inline-flex items-center gap-1 px-3 py-1 bg-purple-100 text-purple-700 rounded-full font-medium capitalize">
-                {{ level }}
-            </span>
+              · <span class="capitalize font-medium text-purple-600">{{ level }}</span>
             {% endif %}
-            {% if not selected_batch and not level %}
-            <span class="inline-flex items-center gap-1 px-3 py-1 bg-gray-100 text-gray-600 rounded-full font-medium">
-                All Students
-            </span>
-            {% endif %}
+          </p>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <!-- ─────────────────────────── FLASH MESSAGES ──────────────────────────── -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="mb-4 px-4 py-3 rounded-lg text-sm font-medium
+            {% if category == 'success' %}bg-green-50 text-green-800 border border-green-200
+            {% elif category == 'error' %}bg-red-50 text-red-800 border border-red-200
+            {% else %}bg-blue-50 text-blue-800 border border-blue-200{% endif %}">
+            {{ message }}
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- ──────────────────────────── FILTER BAR ─────────────────────────────── -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 px-5 py-4 mb-6">
+      <form method="GET" action="{{ url_for('instructor.dashboard') }}"
+            class="flex flex-wrap items-end gap-3 w-full" id="filterForm">
+
+        <!-- Batch -->
+        <div class="flex flex-col gap-1 flex-1 min-w-[160px]">
+          <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Batch</label>
+          <select name="batch_id" id="batchSelect"
+                  class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+            <option value="">All Batches</option>
+            {% for batch in batches %}
+              <option value="{{ batch.id }}" {% if selected_batch and selected_batch.id == batch.id %}selected{% endif %}>
+                {{ batch.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Level -->
+        <div class="flex flex-col gap-1 flex-1 min-w-[140px]">
+          <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Level</label>
+          <select name="level" id="levelSelect"
+                  class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+            <option value="">All Levels</option>
+            {% for lvl in levels %}
+              <option value="{{ lvl }}" {% if level == lvl %}selected{% endif %} class="capitalize">
+                {{ lvl | capitalize }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Days -->
+        <div class="flex flex-col gap-1 flex-1 min-w-[120px]">
+          <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Period</label>
+          <select name="days" id="daysSelect"
+                  class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+            <option value="7"  {% if days == 7  %}selected{% endif %}>Last 7 days</option>
+            <option value="14" {% if days == 14 %}selected{% endif %}>Last 14 days</option>
+            <option value="30" {% if days == 30 %}selected{% endif %}>Last 30 days</option>
+            <option value="60" {% if days == 60 %}selected{% endif %}>Last 60 days</option>
+            <option value="90" {% if days == 90 %}selected{% endif %}>Last 90 days</option>
+          </select>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex gap-2 items-end flex-1 justify-end">
+          <button type="submit"
+                  class="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition">
+            Apply
+          </button>
+          <a href="{{ url_for('instructor.dashboard') }}"
+             class="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition">
+            Clear
+          </a>
+          <a href="{{ url_for('instructor.export_attendance_csv') }}?{{ request.query_string.decode() }}"
+             class="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+            Export CSV
+          </a>
+        </div>
+      </form>
+
+      <!-- Active filter pills -->
+      {% if level or selected_batch or days != 30 %}
+      <div class="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
+        <span class="text-xs text-gray-400 font-medium self-center">Active filters:</span>
+        {% if selected_batch %}
+          <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+            Batch: {{ selected_batch.name }}
+          </span>
+        {% endif %}
+        {% if level %}
+          <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700 capitalize">
+            Level: {{ level }}
+          </span>
+        {% endif %}
+        {% if days != 30 %}
+          <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+            Period: {{ days }} days
+          </span>
+        {% endif %}
+      </div>
+      {% endif %}
     </div>
 
-    <!-- Filter Bar -->
-    <div class="bg-white rounded-lg shadow p-4 mb-8">
-        <div class="flex flex-wrap gap-3 items-end">
+    <!-- ─────────────────────── TOP STATS CARDS ─────────────────────────────── -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-6">
 
-            <!-- Batch filter -->
-            <div class="flex-1 min-w-[160px]">
-                <label for="batchSelect" class="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Batch</label>
-                <select id="batchSelect" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-                    <option value="">All Batches</option>
-                    {% for batch in batches %}
-                    <option value="{{ batch.id }}" {% if batch.id == selected_batch %}selected{% endif %}>
-                        {{ batch.name }} · {{ batch.current_level|capitalize }}
-                    </option>
-                    {% endfor %}
-                </select>
+      <!-- Today's Check-ins -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
+        <div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
+          <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+          </svg>
+        </div>
+        <div>
+          <p class="text-sm text-gray-500 font-medium">Today's Check-ins</p>
+          <p class="text-3xl font-bold text-gray-900">{{ today_checkins }}</p>
+        </div>
+      </div>
+
+      <!-- Expected Students -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
+        <div class="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
+          <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+        </div>
+        <div>
+          <p class="text-sm text-gray-500 font-medium">Expected Students</p>
+          <p class="text-3xl font-bold text-gray-900">{{ expected_students }}</p>
+        </div>
+      </div>
+
+      <!-- Attendance % -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
+        <div class="w-12 h-12 rounded-full
+          {% if today_percentage >= 75 %}bg-green-100{% elif today_percentage >= 50 %}bg-yellow-100{% else %}bg-red-100{% endif %}
+          flex items-center justify-center flex-shrink-0">
+          <svg class="w-6 h-6
+            {% if today_percentage >= 75 %}text-green-600{% elif today_percentage >= 50 %}text-yellow-600{% else %}text-red-600{% endif %}"
+               fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          </svg>
+        </div>
+        <div>
+          <p class="text-sm text-gray-500 font-medium">Today's Attendance</p>
+          <p class="text-3xl font-bold
+            {% if today_percentage >= 75 %}text-green-600{% elif today_percentage >= 50 %}text-yellow-600{% else %}text-red-600{% endif %}">
+            {{ today_percentage }}%
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ────────────────────── TOP 5 EARLIEST + ABSENT TODAY ────────────────── -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+
+      <!-- Top 5 Earliest -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition">
+        <div class="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-green-50 to-emerald-50 rounded-t-xl">
+          <h2 class="text-base font-semibold text-gray-900">🏆 Top 5 Earliest Today</h2>
+          <p class="text-xs text-gray-500 mt-0.5">First arrivals for {{ now.strftime('%d %b') if now else 'today' }}</p>
+        </div>
+        <div class="p-4">
+          {% if top_5_earliest %}
+            <ol class="space-y-3">
+              {% for student in top_5_earliest %}
+              <li class="flex items-center gap-3">
+                <span class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0
+                  {% if loop.index == 1 %}bg-yellow-100 text-yellow-700
+                  {% elif loop.index == 2 %}bg-gray-100 text-gray-600
+                  {% elif loop.index == 3 %}bg-orange-100 text-orange-600
+                  {% else %}bg-indigo-50 text-indigo-500{% endif %}">
+                  {{ loop.index }}
+                </span>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium text-gray-900 truncate">{{ student.student_name }}</p>
+                  <p class="text-xs text-gray-400 truncate">{{ student.student_email }}</p>
+                </div>
+                <span class="text-sm font-semibold text-green-700 bg-green-50 px-2.5 py-1 rounded-full flex-shrink-0">
+                  {{ student.checkin_time }}
+                </span>
+              </li>
+              {% endfor %}
+            </ol>
+          {% else %}
+            <div class="text-center py-8">
+              <p class="text-gray-400 text-sm">No check-ins recorded yet today</p>
             </div>
+          {% endif %}
+        </div>
+      </div>
 
-            <!-- Level filter -->
-            <div class="flex-1 min-w-[160px]">
-                <label for="levelSelect" class="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Level</label>
-                <select id="levelSelect" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-                    <option value="">All Levels</option>
-                    {% for lvl in levels %}
-                    <option value="{{ lvl }}" {% if lvl == level %}selected{% endif %}>{{ lvl|capitalize }}</option>
-                    {% endfor %}
-                </select>
+      <!-- Absent Today -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition">
+        <div class="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-red-50 to-rose-50 rounded-t-xl">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h2 class="text-base font-semibold text-gray-900">🚨 Absent Today</h2>
+              <p class="text-xs text-gray-500 mt-0.5">
+                Updated daily at 9pm ·
+                {% if todays_absences %}
+                  {{ todays_absences | length }} student(s) absent
+                {% else %}
+                  Use "Run Absence Check" to update now
+                {% endif %}
+              </p>
             </div>
-
-            <!-- Date range -->
-            <div class="flex-1 min-w-[140px]">
-                <label for="daysSelect" class="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Date Range</label>
-                <select id="daysSelect" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-                    <option value="7"  {% if days == 7  %}selected{% endif %}>Last 7 days</option>
-                    <option value="14" {% if days == 14 %}selected{% endif %}>Last 14 days</option>
-                    <option value="30" {% if days == 30 %}selected{% endif %}>Last 30 days</option>
-                    <option value="60" {% if days == 60 %}selected{% endif %}>Last 60 days</option>
-                    <option value="90" {% if days == 90 %}selected{% endif %}>Last 90 days</option>
-                </select>
-            </div>
-
-            <!-- Divider -->
-            <div class="hidden sm:block w-px h-8 bg-gray-200 self-end mb-1"></div>
-
-            <!-- Clear filters -->
-            {% if selected_batch or level %}
-            <a href="{{ url_for('instructor.dashboard') }}"
-               class="self-end px-4 py-2 text-sm bg-gray-100 text-gray-600 font-medium rounded-lg hover:bg-gray-200 transition whitespace-nowrap">
-                Clear Filters
-            </a>
-            {% endif %}
-
-            <!-- Export -->
-            <button id="exportBtn"
-                    class="self-end inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition whitespace-nowrap">
-                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            <!-- Manual trigger -->
+            <form method="POST" action="{{ url_for('instructor.run_absence_check') }}">
+              <button type="submit"
+                      class="inline-flex items-center px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 transition">
+                <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                 </svg>
-                Export CSV
-            </button>
+                Run Check
+              </button>
+            </form>
+          </div>
         </div>
-    </div>
-
-    <!-- Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <!-- Today's Check-ins -->
-        <div class="bg-white rounded-lg shadow p-6 border-l-4 border-blue-500 hover:shadow-lg transition">
-            <div class="flex items-center justify-between">
-                <div>
-                    <p class="text-sm font-medium text-gray-600">Today's Check-ins</p>
-                    <p class="text-3xl font-bold text-gray-900 mt-2">{{ today_checkins }}</p>
-                    <p class="text-xs text-gray-500 mt-1">
-                        {% if selected_batch and level %}
-                            Batch + {{ level|capitalize }}
-                        {% elif selected_batch %}
-                            Selected Batch
-                        {% elif level %}
-                            {{ level|capitalize }}
-                        {% else %}
-                            All Levels
-                        {% endif %}
-                    </p>
+        <div class="p-4">
+          {% if todays_absences %}
+            <ul class="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {% for absence in todays_absences %}
+              <li class="flex items-center gap-3 p-2 rounded-lg bg-red-50">
+                <div class="w-7 h-7 rounded-full bg-red-200 flex items-center justify-center flex-shrink-0">
+                  <span class="text-xs font-bold text-red-700">{{ absence.student_name[0] | upper }}</span>
                 </div>
-                <div class="bg-blue-100 rounded-full p-3">
-                    <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium text-gray-900 truncate">{{ absence.student_name }}</p>
+                  <p class="text-xs text-gray-400 truncate">{{ absence.student_email or 'No email' }}</p>
                 </div>
-            </div>
-        </div>
-
-        <!-- Expected Students -->
-        <div class="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500 hover:shadow-lg transition">
-            <div class="flex items-center justify-between">
-                <div>
-                    <p class="text-sm font-medium text-gray-600">Expected Students</p>
-                    <p class="text-3xl font-bold text-gray-900 mt-2">{{ expected_students }}</p>
-                    <p class="text-xs text-gray-500 mt-1">
-                        {% if selected_batch and level %}
-                            Batch + {{ level|capitalize }}
-                        {% elif selected_batch %}
-                            Selected Batch
-                        {% elif level %}
-                            {{ level|capitalize }}
-                        {% else %}
-                            All Levels
-                        {% endif %}
-                    </p>
-                </div>
-                <div class="bg-purple-100 rounded-full p-3">
-                    <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
-                    </svg>
-                </div>
-            </div>
-        </div>
-
-        <!-- Today's Attendance Rate -->
-        <div class="bg-white rounded-lg shadow p-6 border-l-4 {% if today_percentage >= 75 %}border-green-500{% elif today_percentage >= 50 %}border-yellow-500{% else %}border-red-500{% endif %} hover:shadow-lg transition">
-            <div class="flex items-center justify-between">
-                <div>
-                    <p class="text-sm font-medium text-gray-600">Today's Attendance</p>
-                    <p class="text-3xl font-bold text-gray-900 mt-2">{{ today_percentage }}%</p>
-                    <p class="text-xs text-gray-500 mt-1">
-                        {% if today_percentage >= 75 %}Excellent turnout
-                        {% elif today_percentage >= 50 %}Moderate turnout
-                        {% else %}Low turnout{% endif %}
-                    </p>
-                </div>
-                <div class="{% if today_percentage >= 75 %}bg-green-100{% elif today_percentage >= 50 %}bg-yellow-100{% else %}bg-red-100{% endif %} rounded-full p-3">
-                    <svg class="w-8 h-8 {% if today_percentage >= 75 %}text-green-600{% elif today_percentage >= 50 %}text-yellow-600{% else %}text-red-600{% endif %}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                    </svg>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        <!-- Top 5 Earliest Students Today -->
-        <div class="bg-white rounded-lg shadow hover:shadow-lg transition">
-            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-purple-50">
-                <h2 class="text-lg font-semibold text-gray-900">🏆 Top 5 Earliest Students Today</h2>
-            </div>
-            <div class="p-6">
-                {% if top_5_earliest %}
-                <div class="space-y-3">
-                    {% for student in top_5_earliest %}
-                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition cursor-pointer student-row" data-student-id="{{ student.student_id }}">
-                        <div class="flex items-center gap-3">
-                            <span class="flex items-center justify-center w-8 h-8 bg-indigo-100 text-indigo-600 rounded-full font-bold text-sm">
-                                {{ loop.index }}
-                            </span>
-                            <div>
-                                <p class="font-medium text-gray-900">{{ student.student_name }}</p>
-                                <p class="text-sm text-gray-500">{{ student.student_email }}</p>
-                                <p class="text-xs text-gray-400">{{ student.student_level or 'N/A' }}</p>
-                            </div>
-                        </div>
-                        <span class="text-lg font-semibold text-green-600">{{ student.checkin_time }}</span>
-                    </div>
-                    {% endfor %}
-                </div>
+                {% if absence.notified %}
+                  <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex-shrink-0">Notified</span>
                 {% else %}
-                <div class="text-center py-8">
-                    <svg class="w-16 h-16 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
-                    <p class="text-gray-500">No check-ins today yet</p>
-                </div>
+                  <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full flex-shrink-0">Pending</span>
                 {% endif %}
+              </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="text-center py-8">
+              <p class="text-gray-400 text-sm">No absences recorded yet</p>
             </div>
+          {% endif %}
         </div>
-
-        <!-- Students Below 60% -->
-        <div class="bg-white rounded-lg shadow hover:shadow-lg transition">
-            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-red-50 to-orange-50">
-                <div class="flex items-center justify-between">
-                    <h2 class="text-lg font-semibold text-gray-900">⚠️ Students Below 60% Attendance</h2>
-                    {% if students_below_60 %}
-                    <span class="px-3 py-1 bg-red-600 text-white text-xs font-bold rounded-full">{{ students_below_60|length }}</span>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="p-6">
-                {% if students_below_60 %}
-                <div class="space-y-3 max-h-96 overflow-y-auto">
-                    {% for student in students_below_60 %}
-                    <div class="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200 hover:bg-red-100 transition cursor-pointer student-row" data-student-id="{{ student.student_id }}">
-                        <div>
-                            <p class="font-medium text-gray-900">{{ student.student_name }}</p>
-                            <p class="text-sm text-gray-500">{{ student.student_email }}</p>
-                            <p class="text-xs text-gray-400 mt-1">Level: {{ student.student_level or 'N/A' }} · {{ student.days_attended }}/{{ student.total_days }} days</p>
-                        </div>
-                        <div class="text-right">
-                            <span class="text-2xl font-bold text-red-600">{{ student.attendance_pct }}%</span>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div class="text-center py-8">
-                    <svg class="w-16 h-16 text-green-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
-                    <p class="text-green-600 font-medium">✓ All students above 60%</p>
-                    <p class="text-sm text-gray-500 mt-1">Great attendance performance!</p>
-                </div>
-                {% endif %}
-            </div>
-        </div>
+      </div>
     </div>
 
-    <!-- Average Check-in Times -->
-    <div class="bg-white rounded-lg shadow mb-8 hover:shadow-lg transition">
-        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-cyan-50">
-            <h2 class="text-lg font-semibold text-gray-900">⏰ Average Check-in Times (Last {{ days }} days)</h2>
+    <!-- ─────────────────── PERSONAL TIME + STUDENTS BELOW 60 ───────────────── -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+
+      <!-- Personal Time Today -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition">
+        <div class="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-indigo-50 to-blue-50 rounded-t-xl">
+          <h2 class="text-base font-semibold text-gray-900">⏱ Personal Time Today</h2>
+          <p class="text-xs text-gray-500 mt-0.5">Students who scanned on a non-class day</p>
         </div>
-        <div class="overflow-x-auto">
-            {% if avg_checkin_times %}
-            <table class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-gray-50">
-                    <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student Name</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Level</th>
-                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Avg Check-in Time</th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white divide-y divide-gray-200">
-                    {% for student in avg_checkin_times %}
-                    <tr class="hover:bg-gray-50 cursor-pointer transition student-row" data-student-id="{{ student.student_id }}">
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ student.student_name }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ student.student_email }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">{{ student.student_level or 'N/A' }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center font-semibold">{{ student.avg_time }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <div class="text-center py-12">
-                <p class="text-gray-500">No attendance data available for the selected filters</p>
+        <div class="p-4">
+          {% if todays_personal_time %}
+            <ul class="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {% for student in todays_personal_time %}
+              <li class="flex items-center gap-3 p-2 rounded-lg bg-indigo-50">
+                <div class="w-7 h-7 rounded-full bg-indigo-200 flex items-center justify-center flex-shrink-0">
+                  <span class="text-xs font-bold text-indigo-700">{{ student.student_name[0] | upper }}</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium text-gray-900 truncate">{{ student.student_name }}</p>
+                  <p class="text-xs text-gray-400 truncate">{{ student.student_email or 'No email' }}</p>
+                </div>
+                <span class="text-sm font-semibold text-indigo-700 bg-indigo-100 px-2.5 py-1 rounded-full flex-shrink-0">
+                  {{ student.checkin_time }}
+                </span>
+              </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="text-center py-8">
+              <p class="text-gray-400 text-sm">No personal time scans today</p>
             </div>
-            {% endif %}
+          {% endif %}
         </div>
+      </div>
+
+      <!-- Students Below 60% -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition">
+        <div class="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-orange-50 to-amber-50 rounded-t-xl">
+          <h2 class="text-base font-semibold text-gray-900">⚠️ Students Below 60%</h2>
+          <p class="text-xs text-gray-500 mt-0.5">At-risk attendance over last {{ days }} days</p>
+        </div>
+        <div class="p-4">
+          {% if students_below_60 %}
+            <ul class="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {% for student in students_below_60 %}
+              <li class="flex items-center gap-3 p-2 rounded-lg bg-orange-50 cursor-pointer student-row"
+                  data-student-id="{{ student.student_id }}">
+                <div class="w-7 h-7 rounded-full bg-orange-200 flex items-center justify-center flex-shrink-0">
+                  <span class="text-xs font-bold text-orange-700">{{ student.student_name[0] | upper }}</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium text-gray-900 truncate">{{ student.student_name }}</p>
+                  <p class="text-xs text-gray-400">{{ student.days_attended }}/{{ student.total_days }} days</p>
+                </div>
+                <span class="text-sm font-bold text-red-600 bg-red-100 px-2.5 py-1 rounded-full flex-shrink-0">
+                  {{ student.attendance_pct }}%
+                </span>
+              </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="text-center py-8">
+              <p class="text-gray-400 text-sm">All students above 60% — great work!</p>
+            </div>
+          {% endif %}
+        </div>
+      </div>
     </div>
 
-    <!-- Attendance Percentage per Student -->
-    <div class="bg-white rounded-lg shadow mb-8 hover:shadow-lg transition">
-        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-pink-50">
-            <h2 class="text-lg font-semibold text-gray-900">📊 Student Attendance Percentages (Last {{ days }} days)</h2>
-        </div>
-        <div class="overflow-x-auto">
-            {% if student_percentages %}
-            <table class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-gray-50">
-                    <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student Name</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Level</th>
-                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Days Attended</th>
-                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Attendance %</th>
-                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white divide-y divide-gray-200">
-                    {% for student in student_percentages %}
-                    <tr class="hover:bg-gray-50 {% if student.is_below_threshold %}bg-red-50{% endif %} cursor-pointer transition student-row" data-student-id="{{ student.student_id }}">
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ student.student_name }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ student.student_email }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">{{ student.student_level or 'N/A' }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ student.days_attended }}/{{ student.total_days }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-center">
-                            <span class="text-lg font-bold {% if student.attendance_pct >= 75 %}text-green-600{% elif student.attendance_pct >= 60 %}text-yellow-600{% else %}text-red-600{% endif %}">
-                                {{ student.attendance_pct }}%
-                            </span>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-center">
-                            {% if student.attendance_pct >= 75 %}
-                            <span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Excellent</span>
-                            {% elif student.attendance_pct >= 60 %}
-                            <span class="px-3 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">Good</span>
-                            {% else %}
-                            <span class="px-3 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">At Risk</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <div class="text-center py-12">
-                <p class="text-gray-500">No students found for the selected filters</p>
-            </div>
-            {% endif %}
-        </div>
+    <!-- ─────────────────────── AVG CHECK-IN TIMES ───────────────────────────── -->
+    {% if avg_checkin_times %}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6 hover:shadow-md transition">
+      <div class="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-teal-50 to-cyan-50 rounded-t-xl">
+        <h2 class="text-base font-semibold text-gray-900">🕐 Average Check-in Times</h2>
+        <p class="text-xs text-gray-500 mt-0.5">Class scans only · Last {{ days }} days</p>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Student</th>
+              <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
+              <th class="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Level</th>
+              <th class="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Avg Time</th>
+            </tr>
+          </thead>
+          <tbody class="bg-white divide-y divide-gray-100">
+            {% for student in avg_checkin_times %}
+            <tr class="hover:bg-gray-50 transition cursor-pointer student-row" data-student-id="{{ student.student_id }}">
+              <td class="px-5 py-3 text-sm font-medium text-gray-900">{{ student.student_name }}</td>
+              <td class="px-5 py-3 text-sm text-gray-500">{{ student.student_email or '—' }}</td>
+              <td class="px-5 py-3 text-sm text-gray-500 text-center capitalize">{{ student.student_level or 'N/A' }}</td>
+              <td class="px-5 py-3 text-center">
+                <span class="text-sm font-semibold text-teal-700 bg-teal-50 px-2.5 py-1 rounded-full">
+                  {{ student.avg_time }}
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
     {% endif %}
-</div>
 
-<!-- Student Details Modal -->
-<div id="studentModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-    <div class="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
-        <div class="flex justify-between items-center mb-4">
-            <h3 class="text-xl font-bold text-gray-900" id="modalStudentName">Student Details</h3>
-            <button onclick="closeStudentModal()" class="text-gray-400 hover:text-gray-600">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                </svg>
-            </button>
+    <!-- ──────────────────────── MAIN ATTENDANCE SHEET ──────────────────────── -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6 hover:shadow-md transition">
+      <div class="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-purple-50 to-pink-50 rounded-t-xl">
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h2 class="text-base font-semibold text-gray-900">📋 Attendance Sheet</h2>
+            <p class="text-xs text-gray-500 mt-0.5">
+              Last {{ days }} days · {{ student_percentages | length }} student(s)
+              {% if todays_absences %}
+                · <span class="text-red-600 font-medium">{{ todays_absences | length }} absent today</span>
+              {% endif %}
+            </p>
+          </div>
         </div>
-        <div id="modalContent" class="mt-4"></div>
+      </div>
+      <div class="overflow-x-auto">
+        {% if student_percentages %}
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50 sticky top-0 z-10">
+            <tr>
+              <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Student</th>
+              <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
+              <th class="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Level</th>
+              <th class="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Today</th>
+              <th class="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Days</th>
+              <th class="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Attendance %</th>
+              <th class="px-5 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+            </tr>
+          </thead>
+          <tbody class="bg-white divide-y divide-gray-100">
+            {% for student in student_percentages %}
+            <tr class="hover:bg-gray-50 transition cursor-pointer student-row
+                {% if student.is_absent_today %}bg-red-50 hover:bg-red-100
+                {% elif student.is_pt_today %}bg-indigo-50 hover:bg-indigo-100
+                {% endif %}"
+                data-student-id="{{ student.student_id }}">
+
+              <td class="px-5 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                {{ student.student_name }}
+              </td>
+              <td class="px-5 py-3 whitespace-nowrap text-sm text-gray-500">
+                {{ student.student_email or '—' }}
+              </td>
+              <td class="px-5 py-3 whitespace-nowrap text-sm text-gray-500 text-center capitalize">
+                {{ student.student_level or 'N/A' }}
+              </td>
+
+              <!-- Today's status badge -->
+              <td class="px-5 py-3 whitespace-nowrap text-center">
+                {% if student.is_absent_today %}
+                  <span class="px-2.5 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full">ABSENT</span>
+                {% elif student.is_pt_today %}
+                  <span class="px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-full">P.T</span>
+                {% else %}
+                  <span class="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full">PRESENT</span>
+                {% endif %}
+              </td>
+
+              <td class="px-5 py-3 whitespace-nowrap text-sm text-gray-700 text-center">
+                {{ student.days_attended }}/{{ student.total_days }}
+              </td>
+
+              <td class="px-5 py-3 whitespace-nowrap text-center">
+                <span class="text-lg font-bold
+                  {% if student.attendance_pct >= 75 %}text-green-600
+                  {% elif student.attendance_pct >= 60 %}text-yellow-600
+                  {% else %}text-red-600{% endif %}">
+                  {{ student.attendance_pct }}%
+                </span>
+              </td>
+
+              <td class="px-5 py-3 whitespace-nowrap text-center">
+                {% if student.attendance_pct >= 75 %}
+                  <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Excellent</span>
+                {% elif student.attendance_pct >= 60 %}
+                  <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">Good</span>
+                {% else %}
+                  <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">At Risk</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+          <div class="text-center py-14">
+            <svg class="w-10 h-10 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            <p class="text-gray-400 text-sm">No students found for the selected filters</p>
+          </div>
+        {% endif %}
+      </div>
     </div>
+
+  </div><!-- /max-w-7xl -->
+</div><!-- /min-h-screen -->
+
+
+<!-- ─────────────────────────── STUDENT MODAL ───────────────────────────── -->
+<div id="studentModal"
+     class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4"
+     role="dialog" aria-modal="true" aria-labelledby="modalStudentName">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+
+    <!-- Modal header -->
+    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-indigo-50 to-purple-50 rounded-t-2xl flex-shrink-0">
+      <div>
+        <h2 id="modalStudentName" class="text-lg font-bold text-gray-900">Student Details</h2>
+        <p id="modalStudentEmail" class="text-sm text-gray-500"></p>
+      </div>
+      <button id="closeModal"
+              class="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition">
+        <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Modal body -->
+    <div id="modalBody" class="flex-1 overflow-y-auto p-6">
+      <div id="modalLoading" class="flex items-center justify-center py-16">
+        <svg class="animate-spin w-8 h-8 text-indigo-500" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+        </svg>
+      </div>
+      <div id="modalContent" class="hidden"></div>
+      <div id="modalError" class="hidden text-center py-10 text-red-500 text-sm"></div>
+    </div>
+
+  </div>
 </div>
 
+
+<!-- ─────────────────────────── JAVASCRIPT ──────────────────────────────── -->
 <script>
-    const batchSelect = document.getElementById('batchSelect');
-    const levelSelect = document.getElementById('levelSelect');
-    const daysSelect  = document.getElementById('daysSelect');
-    const exportBtn   = document.getElementById('exportBtn');
+  /* ── Helpers ── */
+  function escapeHtml(str) {
+    if (!str) return '—';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
 
-    // Build query string from current filter state
-    function buildParams() {
-        const params = new URLSearchParams();
-        if (batchSelect.value) params.set('batch_id', batchSelect.value);
-        if (levelSelect.value) params.set('level',    levelSelect.value);
-        if (daysSelect.value)  params.set('days',     daysSelect.value);
-        return params.toString();
-    }
+  function buildParams(extra = {}) {
+    const params = new URLSearchParams();
+    const batchId = document.getElementById('batchSelect')?.value;
+    const level   = document.getElementById('levelSelect')?.value;
+    const days    = document.getElementById('daysSelect')?.value;
+    if (batchId) params.set('batch_id', batchId);
+    if (level)   params.set('level', level);
+    if (days)    params.set('days', days);
+    Object.entries(extra).forEach(([k, v]) => params.set(k, v));
+    return params;
+  }
 
-    // Reload page whenever any filter changes
-    [batchSelect, levelSelect, daysSelect].forEach(select => {
-        if (select) {
-            select.addEventListener('change', () => {
-                window.location.href = `{{ url_for('instructor.dashboard') }}?${buildParams()}`;
-            });
-        }
-    });
+  /* ── Modal ── */
+  const modal        = document.getElementById('studentModal');
+  const modalName    = document.getElementById('modalStudentName');
+  const modalEmail   = document.getElementById('modalStudentEmail');
+  const modalLoading = document.getElementById('modalLoading');
+  const modalContent = document.getElementById('modalContent');
+  const modalError   = document.getElementById('modalError');
 
-    // Export passes all active filters
-    if (exportBtn) {
-        exportBtn.addEventListener('click', () => {
-            window.location.href = `{{ url_for('instructor.export_attendance_csv') }}?${buildParams()}`;
-        });
-    }
+  function openModal()  { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+  function closeModal() { modal.classList.add('hidden');    modal.classList.remove('flex'); }
 
-    // Event delegation for student row clicks
-    document.addEventListener('click', function(e) {
-        const row = e.target.closest('.student-row');
-        if (row && row.dataset.studentId) {
-            showStudentDetails(row.dataset.studentId);
-        }
-    });
+  function showModalError(msg) {
+    modalLoading.classList.add('hidden');
+    modalContent.classList.add('hidden');
+    modalError.classList.remove('hidden');
+    modalError.textContent = msg;
+  }
 
-    function showStudentDetails(studentId) {
-        const modal   = document.getElementById('studentModal');
-        const content = document.getElementById('modalContent');
+  document.getElementById('closeModal').addEventListener('click', closeModal);
+  modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
-        modal.classList.remove('hidden');
-        content.innerHTML = loadingSpinner();
+  /* ── Student row click → fetch attendance ── */
+  document.addEventListener('click', function(e) {
+    const row = e.target.closest('.student-row');
+    if (!row) return;
+    const studentId = row.dataset.studentId;
+    if (!studentId) return;
 
-        const params = buildParams();
-        const baseUrl = `{{ url_for('instructor.get_student_attendance_api', student_id=0) }}`
-            .replace('/0/', `/${studentId}/`);
+    // Reset modal state
+    modalName.textContent  = 'Loading…';
+    modalEmail.textContent = '';
+    modalLoading.classList.remove('hidden');
+    modalContent.classList.add('hidden');
+    modalError.classList.add('hidden');
+    openModal();
 
-        fetch(`${baseUrl}?${params}`)
-            .then(r => { if (!r.ok) throw new Error(); return r.json(); })
-            .then(data => {
-                if (!data.success) { showModalError('Error loading student details'); return; }
+    const params = buildParams();
+    const attendanceBaseUrl = "{{ url_for('instructor.get_student_attendance_api', student_id=0) }}";
+    const attendanceUrl = attendanceBaseUrl.replace('/0/', `/${studentId}/`);
+    fetch(`${attendanceUrl}?${params}`)
+      .then(r => {
+        if (!r.ok) throw new Error(`Server error: ${r.status}`);
+        return r.json();
+      })
+      .then(data => {
+        if (data.error) throw new Error(data.error);
 
-                const s = data.student;
-                const records = data.attendance_records;
+        modalName.textContent  = escapeHtml(data.student_name);
+        modalEmail.textContent = escapeHtml(data.student_email);
+        modalLoading.classList.add('hidden');
 
-                document.getElementById('modalStudentName').textContent = s.name;
-
-                let html = `
-                    <div class="mb-4 p-4 bg-gray-50 rounded-lg">
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <p class="text-sm text-gray-600">Email</p>
-                                <p class="font-medium">${escapeHtml(s.email)}</p>
-                            </div>
-                            <div>
-                                <p class="text-sm text-gray-600">Level</p>
-                                <p class="font-medium capitalize">${escapeHtml(s.level || 'N/A')}</p>
-                            </div>
-                        </div>
-                    </div>
-                    <h4 class="font-semibold text-gray-900 mb-3">Recent Attendance (${data.total_records} records)</h4>
-                    <div class="max-h-96 overflow-y-auto">
-                `;
-
-                if (records.length > 0) {
-                    html += '<div class="space-y-2">';
-                    records.forEach(rec => {
-                        html += `
-                            <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                                <div>
-                                    <p class="font-medium text-gray-900">${escapeHtml(rec.date)}</p>
-                                    <p class="text-sm text-gray-500 capitalize">${escapeHtml(rec.level || 'N/A')}</p>
-                                </div>
-                                <div class="text-right">
-                                    <p class="font-semibold text-indigo-600">${escapeHtml(rec.time)}</p>
-                                    <p class="text-xs text-gray-400">${escapeHtml(rec.ip_address || 'N/A')}</p>
-                                </div>
-                            </div>
-                        `;
-                    });
-                    html += '</div>';
-                } else {
-                    html += '<p class="text-center text-gray-500 py-8">No attendance records found</p>';
+        if (!data.records || data.records.length === 0) {
+          modalContent.innerHTML = `
+            <div class="text-center py-10 text-gray-400 text-sm">
+              No attendance records found for this period
+            </div>`;
+        } else {
+          const rows = data.records.map(rec => `
+            <tr class="hover:bg-gray-50 transition">
+              <td class="px-4 py-3 text-sm text-gray-700">${escapeHtml(rec.date)}</td>
+              <td class="px-4 py-3 text-sm text-gray-700">${escapeHtml(rec.time)}</td>
+              <td class="px-4 py-3 text-center">
+                ${rec.is_personal_time
+                  ? '<span class="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-full">P.T</span>'
+                  : '<span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded-full">Class</span>'
                 }
+              </td>
+            </tr>`).join('');
 
-                html += '</div>';
-                content.innerHTML = html;
-            })
-            .catch(() => showModalError('Error loading student details. Please try again.'));
-    }
-
-    function loadingSpinner() {
-        return `
-            <div class="flex justify-center items-center py-8">
-                <svg class="animate-spin h-8 w-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
+          modalContent.innerHTML = `
+            <div class="mb-4 flex items-center gap-2 flex-wrap">
+              <span class="px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-full">
+                ${data.records.length} record(s) found
+              </span>
+              <span class="px-3 py-1 bg-gray-100 text-gray-600 text-xs font-semibold rounded-full capitalize">
+                ${escapeHtml(data.student_level || 'N/A')}
+              </span>
+            </div>
+            <div class="overflow-x-auto rounded-lg border border-gray-200">
+              <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                    <th class="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Time</th>
+                    <th class="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase">Type</th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-100">${rows}</tbody>
+              </table>
             </div>`;
-    }
+        }
 
-    function showModalError(msg) {
-        document.getElementById('modalContent').innerHTML = `
-            <div class="text-center py-8">
-                <svg class="w-16 h-16 text-red-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                <p class="text-red-600">${escapeHtml(msg)}</p>
-            </div>`;
-    }
-
-    function escapeHtml(text) {
-        const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
-        return String(text).replace(/[&<>"']/g, m => map[m]);
-    }
-
-    function closeStudentModal() {
-        document.getElementById('studentModal').classList.add('hidden');
-    }
-
-    document.getElementById('studentModal').addEventListener('click', function(e) {
-        if (e.target === this) closeStudentModal();
-    });
-
-    document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') closeStudentModal();
-    });
+        modalContent.classList.remove('hidden');
+      })
+      .catch(err => showModalError(err.message || 'Failed to load attendance data'));
+  });
 </script>
+
 {% endblock %}
