@@ -10,7 +10,10 @@ from . import instructor_bp
 from app.instructor_queries import AttendanceQueries
 from app.models import Attendance, User, Batch
 from app import db
+import logging
+from sqlalchemy.exc import SQLAlchemyError
 
+logger = logging.getLogger(__name__)
 
 def instructor_required(f):
     @wraps(f)
@@ -70,7 +73,6 @@ def dashboard():
         levels  = _get_levels()
         batches = _get_active_batches()
 
-        # Empty state — no students with a level yet
         if not levels:
             return render_template('instructor/dashboard.html',
                                    level=None, days=30,
@@ -78,34 +80,35 @@ def dashboard():
                                    selected_batch=None,
                                    no_data=True)
 
-        # -- Parse & validate filters --
         level    = request.args.get('level') or None
         batch_id = request.args.get('batch_id', type=int) or None
         days     = _validate_days(request.args.get('days'))
 
-        # Reject unknown level values
         if level and level not in levels:
             level = None
-
-        # Reject unknown batch_id values
         if batch_id and not any(b.id == batch_id for b in batches):
             batch_id = None
 
+        # Fetch the Batch object so the template can access .id and .name
+        selected_batch = Batch.query.get(batch_id) if batch_id else None
+
         # -- Run queries --
-        today_checkins    = AttendanceQueries.total_checkins_today(level, batch_id)
-        expected_students = AttendanceQueries.total_expected_students(level, batch_id)
-        today_percentage  = AttendanceQueries.attendance_percentage_today(level, batch_id)
-        avg_checkin_times = AttendanceQueries.student_average_checkin_time(level, days, batch_id)
-        top_5_earliest    = AttendanceQueries.top_5_earliest_students(level, batch_id=batch_id)
-        student_percentages = AttendanceQueries.attendance_percentage_per_student(level, days, batch_id)
-        students_below_60   = AttendanceQueries.students_below_threshold(60, level, days, batch_id)
+        today_checkins       = AttendanceQueries.total_checkins_today(level, batch_id)
+        expected_students    = AttendanceQueries.total_expected_students(level, batch_id)
+        today_percentage     = AttendanceQueries.attendance_percentage_today(level, batch_id)
+        avg_checkin_times    = AttendanceQueries.student_average_checkin_time(level, days, batch_id)
+        top_5_earliest       = AttendanceQueries.top_5_earliest_students(level, batch_id=batch_id)
+        student_percentages  = AttendanceQueries.attendance_percentage_per_student(level, days, batch_id)
+        students_below_60    = AttendanceQueries.students_below_threshold(60, level, days, batch_id)
+        todays_absences      = AttendanceQueries.todays_absences(level, batch_id)
+        todays_personal_time = AttendanceQueries.todays_personal_time(level, batch_id)
 
         return render_template('instructor/dashboard.html',
                                level=level,
                                days=days,
                                levels=levels,
                                batches=batches,
-                               selected_batch=batch_id,
+                               selected_batch=selected_batch,
                                today_checkins=today_checkins,
                                expected_students=expected_students,
                                today_percentage=today_percentage,
@@ -113,31 +116,33 @@ def dashboard():
                                top_5_earliest=top_5_earliest,
                                student_percentages=student_percentages,
                                students_below_60=students_below_60,
+                               todays_absences=todays_absences,
+                               todays_personal_time=todays_personal_time,
                                no_data=False)
 
-    except SQLAlchemyError as e:
-        print(f"Database error in dashboard: {str(e)}")
+    except SQLAlchemyError:
+        logger.exception("Database error in dashboard")
         flash("A database error occurred. Please try again.", "error")
         return render_template('instructor/dashboard.html',
                                level=None, days=30, levels=[],
-                               batches=[], selected_batch=None, error=True)
+                               batches=[], selected_batch=None,
+                               today_checkins=0, expected_students=0,
+                               today_percentage=0, avg_checkin_times=[],
+                               top_5_earliest=[], student_percentages=[],
+                               students_below_60=[], todays_absences=[],
+                               todays_personal_time=[], no_data=True)
 
-    except Exception as e:
-        print(f"Unexpected error in dashboard: {str(e)}")
+    except Exception:
+        logger.exception("Unexpected error in dashboard")
         flash("An unexpected error occurred. Please contact support.", "error")
         return render_template('instructor/dashboard.html',
                                level=None, days=30, levels=[],
-                               batches=[], selected_batch=None, error=True)
-
-
-# ---------------------------------------------------------------------------
-# QR Generator
-# ---------------------------------------------------------------------------
-
-@instructor_bp.route('/generate-qr')
-@instructor_required
-def generate_qr():
-    return render_template('instructor/generate_qr.html')
+                               batches=[], selected_batch=None,
+                               today_checkins=0, expected_students=0,
+                               today_percentage=0, avg_checkin_times=[],
+                               top_5_earliest=[], student_percentages=[],
+                               students_below_60=[], todays_absences=[],
+                               todays_personal_time=[], no_data=True)
 
 
 # ---------------------------------------------------------------------------
@@ -209,7 +214,8 @@ def get_student_attendance_api(student_id):
             'date':       record.timestamp.strftime('%Y-%m-%d'),
             'time':       record.timestamp.strftime('%H:%M:%S'),
             'level':      student.level,
-            'ip_address': record.ip_address
+            'ip_address': record.ip_address,
+            'is_personal_time': record.is_personal_time
         } for record in attendance_records]
 
         return jsonify({
@@ -245,12 +251,21 @@ def export_attendance_csv():
         batch_id = request.args.get('batch_id', type=int) or None
         days     = _validate_days(request.args.get('days'))
 
+        batch_obj  = Batch.query.get(batch_id) if batch_id else None
+        batch_name = batch_obj.name if batch_obj else 'All Batches'
+
+        if batch_id:
+            batch_label = batch_obj.name.replace(' ', '_') if batch_obj else str(batch_id)
+        else:
+            batch_label = 'all_batches'
+
         student_data = AttendanceQueries.attendance_percentage_per_student(level, days, batch_id)
 
         si = StringIO()
         writer = csv.writer(si)
         writer.writerow([
-            'Student ID', 'Student Name', 'Email', 'Level', 'Batch ID',
+            'Student ID', 'Student Name', 'Email', 'Level',
+            'Batch Name', 'Batch ID',
             'Days Attended', 'Total Days', 'Attendance %', 'Status'
         ])
 
@@ -260,6 +275,7 @@ def export_attendance_csv():
                 s['student_name'],
                 s['student_email'],
                 s['student_level'] or 'N/A',
+                batch_name,
                 s['student_batch_id'] or 'N/A',
                 s['days_attended'],
                 s['total_days'],
@@ -271,7 +287,6 @@ def export_attendance_csv():
         si.close()
 
         level_label = level or 'all_levels'
-        batch_label = str(batch_id) if batch_id else 'all_batches'
         filename = f"attendance_{level_label}_{batch_label}_{days}days.csv"
 
         return Response(
@@ -281,12 +296,13 @@ def export_attendance_csv():
         )
 
     except Exception:
+        logger.exception("Error exporting attendance CSV")
         flash('Error exporting attendance data', 'error')
         return redirect(url_for('instructor.dashboard'))
 
 
 # ---------------------------------------------------------------------------
-# Level detail page
+# LEVEL DETAIL PAGE--GET LEVEL STATS(BEGINNER, INTER, ADVANCE)
 # ---------------------------------------------------------------------------
 
 @instructor_bp.route('/level/<string:level>')
@@ -314,3 +330,25 @@ def level_detail(level):
     except Exception:
         flash('Error loading level details', 'error')
         return redirect(url_for('instructor.dashboard'))
+    
+
+# ---------------------------------------------------------------------------
+# RUN ABSENCE CHECK
+# ---------------------------------------------------------------------------
+
+
+@instructor_bp.route('/run-absence-check', methods=['POST'])
+@instructor_required
+def run_absence_check():
+    """
+    Manually trigger the absence check job.
+    Useful before 9pm when instructor needs to see who is absent.
+    """
+    try:
+        from app import _mark_absences_job
+        from flask import current_app
+        _mark_absences_job(current_app._get_current_object())
+        flash('Absence check completed successfully.', 'success')
+    except Exception as e:
+        flash('Error running absence check. Please try again.', 'error')
+    return redirect(url_for('instructor.dashboard'))
