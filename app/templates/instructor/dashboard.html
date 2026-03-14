@@ -392,14 +392,41 @@
           <div>
             <h2 class="text-base font-semibold text-gray-900">📋 Attendance Sheet</h2>
             <p class="text-xs text-gray-500 mt-0.5">
-              Last {{ days }} days · {{ student_percentages | length }} student(s)
-              {% if todays_absences %}
-                · <span class="text-red-600 font-medium">{{ todays_absences | length }} absent today</span>
+              {% if selected_batch %}
+                {{ selected_batch.name }} · Last {{ days }} days · {{ student_percentages | length }} student(s)
+                {% if todays_absences %}
+                  · <span class="text-red-600 font-medium">{{ todays_absences | length }} absent today</span>
+                {% endif %}
+              {% else %}
+                Select a batch to view attendance
               {% endif %}
             </p>
           </div>
         </div>
       </div>
+
+      {% if not selected_batch %}
+      <!-- No batch selected — show prompt banner -->
+      <div class="flex flex-col items-center justify-center py-16 px-6 text-center">
+        <div class="w-14 h-14 rounded-full bg-indigo-50 flex items-center justify-center mb-4">
+          <svg class="w-7 h-7 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z"/>
+          </svg>
+        </div>
+        <p class="text-gray-700 font-medium text-sm">Select a batch to view the attendance sheet</p>
+        <p class="text-gray-400 text-xs mt-1 max-w-sm">
+          Attendance percentages are calculated per batch based on each batch's schedule
+          and the date of their first class. Selecting a batch ensures accurate results.
+        </p>
+        <button onclick="document.getElementById('batchSelect').focus()"
+                class="mt-5 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition">
+          Choose a Batch
+        </button>
+      </div>
+
+      {% else %}
+      <!-- Batch selected — show full table -->
       <div class="overflow-x-auto">
         {% if student_percentages %}
         <table class="min-w-full divide-y divide-gray-200">
@@ -421,18 +448,9 @@
                 {% elif student.is_pt_today %}bg-indigo-50 hover:bg-indigo-100
                 {% endif %}"
                 data-student-id="{{ student.student_id }}">
-
-              <td class="px-5 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                {{ student.student_name }}
-              </td>
-              <td class="px-5 py-3 whitespace-nowrap text-sm text-gray-500">
-                {{ student.student_email or '—' }}
-              </td>
-              <td class="px-5 py-3 whitespace-nowrap text-sm text-gray-500 text-center capitalize">
-                {{ student.student_level or 'N/A' }}
-              </td>
-
-              <!-- Today's status badge -->
+              <td class="px-5 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{{ student.student_name }}</td>
+              <td class="px-5 py-3 whitespace-nowrap text-sm text-gray-500">{{ student.student_email or '—' }}</td>
+              <td class="px-5 py-3 whitespace-nowrap text-sm text-gray-500 text-center capitalize">{{ student.student_level or 'N/A' }}</td>
               <td class="px-5 py-3 whitespace-nowrap text-center">
                 {% if student.is_absent_today %}
                   <span class="px-2.5 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full">ABSENT</span>
@@ -442,11 +460,9 @@
                   <span class="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full">PRESENT</span>
                 {% endif %}
               </td>
-
               <td class="px-5 py-3 whitespace-nowrap text-sm text-gray-700 text-center">
                 {{ student.days_attended }}/{{ student.total_days }}
               </td>
-
               <td class="px-5 py-3 whitespace-nowrap text-center">
                 <span class="text-lg font-bold
                   {% if student.attendance_pct >= 75 %}text-green-600
@@ -455,7 +471,6 @@
                   {{ student.attendance_pct }}%
                 </span>
               </td>
-
               <td class="px-5 py-3 whitespace-nowrap text-center">
                 {% if student.attendance_pct >= 75 %}
                   <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Excellent</span>
@@ -479,6 +494,8 @@
           </div>
         {% endif %}
       </div>
+      {% endif %}
+
     </div>
 
   </div><!-- /max-w-7xl -->

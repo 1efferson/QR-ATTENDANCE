@@ -9,7 +9,8 @@ from sqlalchemy import func, cast, Float, case, and_
 from app.models import Attendance, User, Absence
 from app import db
 import logging
-
+from app.models import Attendance, User, Absence, BatchSchedule
+from sqlalchemy import func, case, cast, Float, and_, literal
 logger = logging.getLogger(__name__)
 
 
@@ -220,35 +221,64 @@ class AttendanceQueries:
     def attendance_percentage_per_student(level=None, days=30, batch_id=None):
         """
         Calculate attendance percentage per student over a date range.
-        Also computes today's status (present/absent/PT) inline per student
-        using correlated subqueries — no extra queries needed in the route.
-        Excludes personal time from attendance count.
-        total_days uses .scalar_subquery() to avoid cartesian product.
+        Anchors total_days to the first scan in the batch — not the cutoff date —
+        so students aren't penalised for days before their batch started.
+        total_days counts actual scheduled class days (via BatchSchedule) from
+        first scan to today, within the selected period.
         """
-        cutoff_date = datetime.now() - timedelta(days=days)
+        cutoff_date = (datetime.now() - timedelta(days=days)).date()
         today       = date.today()
 
-        # Total class days in the period (distinct dates with non-PT scans)
-        total_days_sq = db.session.query(
-            func.count(func.distinct(func.date(Attendance.timestamp)))
+        # ── Step 1: find the earliest non-PT scan in this batch/level ──────────
+        first_scan_query = db.session.query(
+            func.min(Attendance.timestamp)
         ).join(User, User.id == Attendance.user_id).filter(
-            Attendance.timestamp >= cutoff_date,
             Attendance.is_personal_time == False,
             User.role == 'student'
         )
-        if level:
-            total_days_sq = total_days_sq.filter(User.level == level)
         if batch_id:
-            total_days_sq = total_days_sq.filter(User.batch_id == batch_id)
-        total_days_scalar = total_days_sq.scalar_subquery()
+            first_scan_query = first_scan_query.filter(User.batch_id == batch_id)
+        if level:
+            first_scan_query = first_scan_query.filter(User.level == level)
 
-        # Per-student days attended (non-PT only)
-        days_attended_count = func.count(func.distinct(func.date(Attendance.timestamp)))
+        first_scan = first_scan_query.scalar()
 
-        # Attendance percentage expression (reused in ORDER BY)
+        # Use whichever is later — the period cutoff or the actual first class day
+        first_scan_date = first_scan.date() if first_scan else cutoff_date
+        effective_start = max(cutoff_date, first_scan_date)
+
+        # ── Step 2: get scheduled weekdays for this batch ──────────────────────
+        if batch_id:
+            schedules = BatchSchedule.query.filter_by(batch_id=batch_id).all()
+            scheduled_weekdays = {s.weekday for s in schedules}
+        else:
+            # No specific batch selected — union of all active batch schedules
+            schedules = BatchSchedule.query.all()
+            scheduled_weekdays = {s.weekday for s in schedules}
+
+        # ── Step 3: count class days between effective_start and today ─────────
+        total_days = 0
+        if scheduled_weekdays:
+            current = effective_start
+            while current <= today:
+                if current.weekday() in scheduled_weekdays:
+                    total_days += 1
+                current += timedelta(days=1)
+
+        # ── Step 4: build per-student attendance query ─────────────────────────
+        effective_start_dt = datetime.combine(effective_start, datetime.min.time())
+
+        days_attended_count = func.count(
+            func.distinct(func.date(Attendance.timestamp))
+        )
+
         attendance_pct_expr = case(
-            (total_days_scalar == 0, cast(0, Float)),
-            else_=(cast(days_attended_count, Float) / cast(total_days_scalar, Float) * 100)
+            (literal(total_days) == 0, cast(0, Float)),
+            else_=(
+                cast(days_attended_count, Float)
+                / cast(literal(total_days), Float)
+                * 100
+            )
         )
 
         # Correlated subquery: did this student get an Absence record today?
@@ -275,7 +305,6 @@ class AttendanceQueries:
             User.level,
             User.batch_id,
             days_attended_count.label('days_attended'),
-            total_days_scalar.label('total_days'),
             attendance_pct_expr.label('attendance_pct'),
             (attendance_pct_expr < 60).label('is_below_threshold'),
             (absent_today_sq > 0).label('is_absent_today'),
@@ -284,7 +313,7 @@ class AttendanceQueries:
             Attendance,
             and_(
                 User.id == Attendance.user_id,
-                Attendance.timestamp >= cutoff_date,
+                Attendance.timestamp >= effective_start_dt,
                 Attendance.is_personal_time == False
             )
         ).filter(User.role == 'student')
@@ -300,8 +329,8 @@ class AttendanceQueries:
 
         results = []
         for (user_id, name, email, student_level, student_batch_id,
-             days_attended, total_days, pct, below_threshold,
-             is_absent_today, is_pt_today) in query.all():
+            days_attended, pct, below_threshold,
+            is_absent_today, is_pt_today) in query.all():
 
             results.append({
                 'student_id':         user_id,
@@ -311,14 +340,13 @@ class AttendanceQueries:
                 'student_batch_id':   student_batch_id,
                 'attendance_pct':     round(pct, 2) if pct is not None else 0.0,
                 'days_attended':      days_attended or 0,
-                'total_days':         total_days or 0,
-                'is_below_threshold': below_threshold,
+                'total_days':         total_days,
+                'is_below_threshold': bool(below_threshold),
                 'is_absent_today':    bool(is_absent_today),
                 'is_pt_today':        bool(is_pt_today)
             })
 
         return results
-
     @staticmethod
     def students_below_threshold(threshold=60, level=None, days=30, batch_id=None):
         """

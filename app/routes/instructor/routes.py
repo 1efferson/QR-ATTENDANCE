@@ -96,12 +96,20 @@ def dashboard():
         today_checkins       = AttendanceQueries.total_checkins_today(level, batch_id)
         expected_students    = AttendanceQueries.total_expected_students(level, batch_id)
         today_percentage     = AttendanceQueries.attendance_percentage_today(level, batch_id)
-        avg_checkin_times    = AttendanceQueries.student_average_checkin_time(level, days, batch_id)
-        top_5_earliest       = AttendanceQueries.top_5_earliest_students(level, batch_id=batch_id)
-        student_percentages  = AttendanceQueries.attendance_percentage_per_student(level, days, batch_id)
-        students_below_60    = AttendanceQueries.students_below_threshold(60, level, days, batch_id)
         todays_absences      = AttendanceQueries.todays_absences(level, batch_id)
         todays_personal_time = AttendanceQueries.todays_personal_time(level, batch_id)
+        top_5_earliest       = AttendanceQueries.top_5_earliest_students(level, batch_id=batch_id)
+
+        # These queries are only accurate when a specific batch is selected
+        # because total_days is anchored to that batch's schedule and first scan
+        if batch_id:
+            avg_checkin_times   = AttendanceQueries.student_average_checkin_time(level, days, batch_id)
+            student_percentages = AttendanceQueries.attendance_percentage_per_student(level, days, batch_id)
+            students_below_60   = AttendanceQueries.students_below_threshold(60, level, days, batch_id)
+        else:
+            avg_checkin_times   = []
+            student_percentages = []
+            students_below_60   = []
 
         return render_template('instructor/dashboard.html',
                                level=level,
@@ -143,7 +151,6 @@ def dashboard():
                                top_5_earliest=[], student_percentages=[],
                                students_below_60=[], todays_absences=[],
                                todays_personal_time=[], no_data=True)
-
 
 # ---------------------------------------------------------------------------
 # API: aggregate stats
