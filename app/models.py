@@ -26,6 +26,11 @@ class Batch(db.Model):
     is_active       = db.Column(db.Boolean, default=True)
     created_at      = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # Tracks when the current level started — set on promotion and on batch creation.
+    # Used to anchor attendance % calculations so students aren't penalised
+    # for days before their current level began.
+    level_started_at = db.Column(db.DateTime, nullable=True, default=datetime.utcnow)
+
     # Relationships
     students       = db.relationship('User', backref='batch', lazy=True, foreign_keys='User.batch_id')
     approved_names = db.relationship('ApprovedStudent', backref='batch', lazy=True, cascade='all, delete-orphan')
@@ -58,7 +63,11 @@ class Batch(db.Model):
         return any(s.weekday == weekday for s in self.schedules)
 
     def promote_to_next_level(self):
-        """Move entire batch to next level."""
+        """
+        Move entire batch to next level.
+        Resets level_started_at to now so attendance calculations
+        start fresh from the promotion date.
+        """
         level_progression = {
             'beginner':     'intermediate',
             'intermediate': 'advanced',
@@ -68,6 +77,7 @@ class Batch(db.Model):
         if next_level and next_level != self.current_level:
             old_level = self.current_level
             self.current_level = next_level
+            self.level_started_at = datetime.utcnow()  # reset the clock for the new level
             for student in self.students:
                 student.level = next_level
             return True, old_level, next_level
@@ -174,6 +184,11 @@ class Attendance(db.Model):
 
     # True if the scan happened on a non-class day — shown as P.T (Personal Time)
     is_personal_time = db.Column(db.Boolean, default=False, nullable=False)
+
+    # Snapshot of the student's level at the time of scan.
+    # Ensures attendance history stays separated by level even after promotion.
+    # e.g. beginner scans won't count toward intermediate attendance %.
+    student_level    = db.Column(db.String(50), nullable=True)
 
     def __repr__(self):
         pt = ' [P.T]' if self.is_personal_time else ''
