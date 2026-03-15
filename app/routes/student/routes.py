@@ -80,7 +80,8 @@ def mark_attendance():
         course_code="General Attendance",
         ip_address=client_ip,
         user_agent=user_agent,
-        is_personal_time=is_personal_time
+        is_personal_time=is_personal_time,
+        student_level=current_user.level  # ← snapshot level at scan time
     )
     db.session.add(attendance)
     db.session.commit()
