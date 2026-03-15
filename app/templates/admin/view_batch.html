@@ -100,8 +100,15 @@
         </div>
     </div>
 
-    <!-- Promote Batch Section -->
+    <!-- ─────────────────────────── PROMOTE BATCH SECTION ───────────────────────────
+         Show promote card for beginner/intermediate, and a "max level" notice for
+         advanced. The promoteModal is ALWAYS rendered in the DOM regardless of level
+         so JavaScript never tries to attach listeners to a non-existent element.
+         Only the trigger button is conditionally shown.
+    ──────────────────────────────────────────────────────────────────────────────── -->
+
     {% if batch.current_level != 'advanced' %}
+    <!-- Promote card — visible for beginner and intermediate only -->
     <div class="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-lg p-6 mb-8">
         <div class="flex items-center justify-between">
             <div class="flex items-center">
@@ -121,14 +128,15 @@
                     </p>
                 </div>
             </div>
-            <form method="POST" action="{{ url_for('admin.promote_batch', batch_id=batch.id) }}" onsubmit="return confirm('Are you sure you want to promote this batch? All students will move to the next level.');">
-                <button type="submit" class="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition">
-                    Promote Batch
-                </button>
-            </form>
+            <!-- Trigger button — only rendered when promotion is possible -->
+            <button onclick="openModal()"
+                    class="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition">
+                Promote Batch
+            </button>
         </div>
     </div>
     {% else %}
+    <!-- Maximum level notice — shown when batch is already advanced -->
     <div class="bg-purple-50 border border-purple-200 rounded-lg p-6 mb-8">
         <div class="flex items-center">
             <div class="bg-purple-100 rounded-full p-3 mr-4">
@@ -144,15 +152,69 @@
     </div>
     {% endif %}
 
-    <!-- Registered Students & Approved List Tabs -->
+    <!-- ─────────────────────────── PROMOTE CONFIRMATION MODAL ──────────────────────
+         Always rendered in the DOM so JavaScript can safely attach event listeners
+         regardless of batch level. Hidden by default via the 'hidden' class.
+         Opened/closed via openModal() and closeModal() helper functions.
+    ──────────────────────────────────────────────────────────────────────────────── -->
+    <div id="promoteModal"
+         class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+
+            <div class="flex items-center gap-4 mb-4">
+                <div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                    <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-bold text-gray-900">Promote Batch</h3>
+                    <p class="text-sm text-gray-500">This action cannot be undone</p>
+                </div>
+            </div>
+
+            <p class="text-sm text-gray-700 mb-2">
+                You are about to promote <span class="font-semibold text-indigo-600">{{ batch.name }}</span>
+                from <span class="capitalize font-semibold">{{ batch.current_level }}</span>
+                to the next level.
+            </p>
+            <ul class="text-sm text-gray-600 bg-gray-50 rounded-lg p-3 mb-6 space-y-1">
+                <li>✓ All students in this batch will be promoted</li>
+                <li>✓ Attendance tracking will reset for the new level</li>
+                <li>✓ Previous level attendance history is preserved</li>
+            </ul>
+
+            <div class="flex gap-3 justify-end">
+                <button type="button" onclick="closeModal()"
+                        class="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition">
+                    Cancel
+                </button>
+                <form method="POST" action="{{ url_for('admin.promote_batch', batch_id=batch.id) }}">
+                    <button type="submit"
+                            class="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition">
+                        Yes, Promote Batch
+                    </button>
+                </form>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ─────────────────────── REGISTERED STUDENTS & APPROVED LIST TABS ────────────
+         Tab switcher: Registered Students | Approved List
+         Both tab contents always rendered — visibility toggled via JS showTab()
+    ──────────────────────────────────────────────────────────────────────────────── -->
     <div class="bg-white rounded-lg shadow mb-8">
-        <!-- Tabs -->
+        <!-- Tab navigation -->
         <div class="border-b border-gray-200">
             <nav class="flex -mb-px">
-                <button onclick="showTab('registered')" id="tab-registered" class="tab-button active px-6 py-4 border-b-2 border-indigo-500 text-indigo-600 font-medium">
+                <button onclick="showTab('registered')" id="tab-registered"
+                        class="tab-button active px-6 py-4 border-b-2 border-indigo-500 text-indigo-600 font-medium">
                     Registered Students ({{ registered_count }})
                 </button>
-                <button onclick="showTab('approved')" id="tab-approved" class="tab-button px-6 py-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium">
+                <button onclick="showTab('approved')" id="tab-approved"
+                        class="tab-button px-6 py-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium">
                     Approved List ({{ approved_count }})
                 </button>
             </nav>
@@ -243,7 +305,8 @@
                 </svg>
                 <h3 class="text-lg font-medium text-gray-900 mb-2">No approved names yet</h3>
                 <p class="text-gray-600 mb-4">Add student names to allow them to register</p>
-                <a href="{{ url_for('admin.manage_approved_students', batch_id=batch.id) }}" class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition">
+                <a href="{{ url_for('admin.manage_approved_students', batch_id=batch.id) }}"
+                   class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition">
                     Manage Approved List
                 </a>
             </div>
@@ -273,22 +336,48 @@
 </div>
 
 <script>
+    // ─────────────────────────── MODAL HELPERS ───────────────────────────────────
+    // openModal/closeModal manage both 'hidden' and 'flex' together so the modal
+    // always centres correctly. The modal element is always in the DOM regardless
+    // of batch level — only the trigger button is conditionally rendered.
+
+    function openModal() {
+        const m = document.getElementById('promoteModal');
+        m.classList.remove('hidden');
+        m.classList.add('flex');
+    }
+
+    function closeModal() {
+        const m = document.getElementById('promoteModal');
+        m.classList.add('hidden');
+        m.classList.remove('flex');
+    }
+
+    // Close modal when clicking the backdrop
+    document.getElementById('promoteModal').addEventListener('click', function(e) {
+        if (e.target === this) closeModal();
+    });
+
+    // ─────────────────────────── TAB SWITCHER ───────────────────────────────────
+    // Toggles between Registered Students and Approved List tabs.
+    // Both tab content divs are always in the DOM; only visibility changes.
+
     function showTab(tabName) {
         // Hide all tab contents
         document.querySelectorAll('.tab-content').forEach(content => {
             content.classList.add('hidden');
         });
-        
-        // Remove active state from all tabs
+
+        // Remove active state from all tab buttons
         document.querySelectorAll('.tab-button').forEach(button => {
             button.classList.remove('active', 'border-indigo-500', 'text-indigo-600');
             button.classList.add('border-transparent', 'text-gray-500');
         });
-        
-        // Show selected tab content
+
+        // Show the selected tab content
         document.getElementById('content-' + tabName).classList.remove('hidden');
-        
-        // Add active state to selected tab
+
+        // Apply active state to the selected tab button
         const activeTab = document.getElementById('tab-' + tabName);
         activeTab.classList.add('active', 'border-indigo-500', 'text-indigo-600');
         activeTab.classList.remove('border-transparent', 'text-gray-500');
