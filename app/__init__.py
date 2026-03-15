@@ -4,6 +4,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from config import Config
 from flask_migrate import Migrate
+import logging
 
 # Initialize extensions globally, but unattached to app
 db = SQLAlchemy()
@@ -78,11 +79,14 @@ def _start_absence_scheduler(app):
 
 def _mark_absences_job(app):
     """
-    Runs inside the app context at 8pm every day.
+    Runs inside the app context at 9pm every day.
     For every active batch that has class today, finds all students
     who did not scan and creates an Absence record for each one.
     Skips students who already have an absence record for today
     (UniqueConstraint prevents duplicates regardless).
+    Now filters present_ids by student_level == batch.current_level
+    so a student who scanned as beginner isn't counted as present
+    for their intermediate class day.
     """
     from datetime import date
     from sqlalchemy import func
@@ -91,18 +95,20 @@ def _mark_absences_job(app):
         try:
             from app.models import Batch, User, Attendance, Absence
 
-            today = date.today()
-            today_weekday = today.weekday()  # 0=Monday ... 6=Sunday
+            logger = logging.getLogger(__name__)
+
+            today         = date.today()
+            today_weekday = today.weekday()
 
             # Get all active batches that have class today
             active_batches = Batch.query.filter_by(is_active=True).all()
-            class_batches = [
+            class_batches  = [
                 b for b in active_batches
                 if any(s.weekday == today_weekday for s in b.schedules)
             ]
 
             if not class_batches:
-                print(f"[Scheduler] No batches have class today ({today}). No absences recorded.")
+                logger.info(f"No batches have class today ({today}). No absences recorded.")
                 return
 
             for batch in class_batches:
@@ -112,12 +118,19 @@ def _mark_absences_job(app):
                     role='student'
                 ).all()
 
-                # Get IDs of students who scanned today (any scan counts as present)
+                if not students:
+                    continue
+
+                # Get IDs of students who scanned today at the correct level.
+                # Using student_level filter ensures a student who scanned as
+                # 'beginner' is NOT counted as present for their 'intermediate'
+                # class day after promotion.
                 present_ids = {
                     row[0] for row in db.session.query(Attendance.user_id).filter(
                         Attendance.user_id.in_([s.id for s in students]),
                         func.date(Attendance.timestamp) == today,
-                        Attendance.is_personal_time == False
+                        Attendance.is_personal_time == False,
+                        Attendance.student_level == batch.current_level
                     ).all()
                 }
 
@@ -125,7 +138,6 @@ def _mark_absences_job(app):
                 absences_created = 0
                 for student in students:
                     if student.id not in present_ids:
-                        # Check if absence already exists (safety check)
                         existing = Absence.query.filter_by(
                             user_id=student.id,
                             date=today
@@ -141,8 +153,11 @@ def _mark_absences_job(app):
                             absences_created += 1
 
                 db.session.commit()
-                print(f"[Scheduler] Batch '{batch.name}': {absences_created} absences recorded for {today}")
+                logger.info(
+                    f"Batch '{batch.name}' [{batch.current_level}]: "
+                    f"{absences_created} absences recorded for {today}"
+                )
 
-        except Exception as e:
-            print(f"[Scheduler] Error marking absences: {e}")
+        except Exception:
+            logger.exception("Error marking absences")
             db.session.rollback()

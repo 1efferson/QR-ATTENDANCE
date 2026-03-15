@@ -53,7 +53,7 @@ def _validate_days(raw):
     """Parse and whitelist the days parameter."""
     try:
         days = int(raw or 30)
-        return days if days in [7, 14, 30, 60, 90] else 30
+        return days if days in [7, 14, 30, 60, 90, 180, 270, 365] else 30
     except (ValueError, TypeError):
         return 30
 
@@ -349,13 +349,19 @@ def level_detail(level):
 def run_absence_check():
     """
     Manually trigger the absence check job.
-    Useful before 9pm when instructor needs to see who is absent.
+    Preserves current dashboard filters on redirect.
     """
     try:
         from app import _mark_absences_job
         from flask import current_app
         _mark_absences_job(current_app._get_current_object())
         flash('Absence check completed successfully.', 'success')
-    except Exception as e:
+    except Exception:
+        logger.exception("Error running absence check")
         flash('Error running absence check. Please try again.', 'error')
-    return redirect(url_for('instructor.dashboard'))
+
+    # Preserve whatever filters the instructor had active
+    return redirect(url_for('instructor.dashboard',
+                            batch_id=request.form.get('batch_id'),
+                            level=request.form.get('level'),
+                            days=request.form.get('days')))

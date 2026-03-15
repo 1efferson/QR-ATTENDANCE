@@ -177,7 +177,8 @@ def create_batch():
             name=name,
             description=description,
             current_level='beginner',
-            is_active=True
+            is_active=True,
+            level_started_at=datetime.utcnow()  # ← anchor beginner period from creation
         )
         db.session.add(batch)
         db.session.flush()  # Gets batch.id without committing
