@@ -615,56 +615,56 @@
         return r.json();
       })
       .then(data => {
-        if (data.error) throw new Error(data.error);
+    if (data.error) throw new Error(data.error);
 
-        modalName.textContent  = escapeHtml(data.student_name);
-        modalEmail.textContent = escapeHtml(data.student_email);
-        modalLoading.classList.add('hidden');
+    modalName.textContent  = escapeHtml(data.student.name);
+    modalEmail.textContent = escapeHtml(data.student.email);
+    modalLoading.classList.add('hidden');
 
-        if (!data.records || data.records.length === 0) {
-          modalContent.innerHTML = `
+    if (!data.attendance_records || data.attendance_records.length === 0) {
+        modalContent.innerHTML = `
             <div class="text-center py-10 text-gray-400 text-sm">
-              No attendance records found for this period
+                No attendance records found for this period
             </div>`;
-        } else {
-          const rows = data.records.map(rec => `
+    } else {
+        const rows = data.attendance_records.map(rec => `
             <tr class="hover:bg-gray-50 transition">
-              <td class="px-4 py-3 text-sm text-gray-700">${escapeHtml(rec.date)}</td>
-              <td class="px-4 py-3 text-sm text-gray-700">${escapeHtml(rec.time)}</td>
-              <td class="px-4 py-3 text-center">
-                ${rec.is_personal_time
-                  ? '<span class="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-full">P.T</span>'
-                  : '<span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded-full">Class</span>'
-                }
-              </td>
+                <td class="px-4 py-3 text-sm text-gray-700">${escapeHtml(rec.date)}</td>
+                <td class="px-4 py-3 text-sm text-gray-700">${escapeHtml(rec.time)}</td>
+                <td class="px-4 py-3 text-center">
+                    ${rec.is_personal_time
+                        ? '<span class="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-full">P.T</span>'
+                        : '<span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded-full">Class</span>'
+                    }
+                </td>
             </tr>`).join('');
 
-          modalContent.innerHTML = `
+        modalContent.innerHTML = `
             <div class="mb-4 flex items-center gap-2 flex-wrap">
-              <span class="px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-full">
-                ${data.records.length} record(s) found
-              </span>
-              <span class="px-3 py-1 bg-gray-100 text-gray-600 text-xs font-semibold rounded-full capitalize">
-                ${escapeHtml(data.student_level || 'N/A')}
-              </span>
+                <span class="px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-full">
+                    ${data.attendance_records.length} record(s) found
+                </span>
+                <span class="px-3 py-1 bg-gray-100 text-gray-600 text-xs font-semibold rounded-full capitalize">
+                    ${escapeHtml(data.student.level || 'N/A')}
+                </span>
             </div>
             <div class="overflow-x-auto rounded-lg border border-gray-200">
-              <table class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-gray-50">
-                  <tr>
-                    <th class="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
-                    <th class="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Time</th>
-                    <th class="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase">Type</th>
-                  </tr>
-                </thead>
-                <tbody class="bg-white divide-y divide-gray-100">${rows}</tbody>
-              </table>
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                            <th class="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Time</th>
+                            <th class="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase">Type</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-100">${rows}</tbody>
+                </table>
             </div>`;
-        }
+    }
 
-        modalContent.classList.remove('hidden');
-      })
-      .catch(err => showModalError(err.message || 'Failed to load attendance data'));
+    modalContent.classList.remove('hidden');
+})
+.catch(err => showModalError(err.message || 'Failed to load attendance data'));
   });
 </script>
 
