@@ -1,17 +1,17 @@
-from flask import render_template
-from flask_login import current_user
+from flask import render_template, send_from_directory, current_app
+import os
 from . import main_bp
+
 
 @main_bp.route('/')
 def index():
     return render_template('index.html')
 
-# not in place yet. later
 
-# @main_bp.route('/about')
-# def about():
-#     return render_template('about.html')
-
-# @main_bp.route('/contact')
-# def contact():
-#     return render_template('contact.html')
+@main_bp.route('/sw.js')
+def service_worker():
+    return send_from_directory(
+        os.path.join(current_app.root_path, 'static', 'js'),
+        'service_worker.js',
+        mimetype='application/javascript'
+    )
