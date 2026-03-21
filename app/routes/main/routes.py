@@ -15,3 +15,28 @@ def service_worker():
         'service_worker.js',
         mimetype='application/javascript'
     )
+
+# Safari always looks for these at the root regardless of what's in the <head> — these routes serve the existing files from /static/icons/.
+@main_bp.route('/apple-touch-icon.png')
+def apple_touch_icon():
+    return send_from_directory(
+        os.path.join(current_app.root_path, 'static', 'icons'),
+        'apple-touch-icon.png',
+        mimetype='image/png'
+    )
+
+@main_bp.route('/apple-touch-icon-precomposed.png')
+def apple_touch_icon_precomposed():
+    return send_from_directory(
+        os.path.join(current_app.root_path, 'static', 'icons'),
+        'apple-touch-icon.png',
+        mimetype='image/png'
+    )
+
+@main_bp.route('/favicon.ico')
+def favicon():
+    return send_from_directory(
+        os.path.join(current_app.root_path, 'static', 'icons'),
+        'favicon.ico',
+        mimetype='image/x-icon'
+    )
