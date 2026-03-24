@@ -1,6 +1,7 @@
 from flask import render_template, redirect, url_for, flash, request
 from flask_login import login_user, logout_user, current_user, login_required
 from datetime import datetime
+from app.sheets_sync import append_student_to_sheet
 
 # 1. Local blueprint import
 from . import auth_bp
@@ -90,6 +91,7 @@ def register():
             approved_record.email = email
         
         db.session.commit()
+        append_student_to_sheet(user)
         
         flash(f'Registration successful! Welcome to {batch.name} - {level.capitalize()}', 'success')
         return redirect(url_for('auth.login'))

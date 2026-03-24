@@ -10,14 +10,14 @@ Handles:
 """
 
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request
+from flask import render_template, redirect, url_for, flash, request, current_app
 from flask_login import login_required, current_user
 from functools import wraps
-from sqlalchemy import func, and_, case
+from sqlalchemy import func, and_
 from app import db
 from app.models import User, Batch, ApprovedStudent, Attendance, BatchSchedule
 from datetime import datetime, timedelta
-
+from app.sheets_sync import create_sheet_tab
 from . import admin_bp
 
 
@@ -178,7 +178,7 @@ def create_batch():
             description=description,
             current_level='beginner',
             is_active=True,
-            level_started_at=datetime.utcnow()  # ← anchor beginner period from creation
+            level_started_at=datetime.utcnow()
         )
         db.session.add(batch)
         db.session.flush()  # Gets batch.id without committing
@@ -188,6 +188,11 @@ def create_batch():
             db.session.add(BatchSchedule(batch_id=batch.id, weekday=int(day)))
 
         db.session.commit()
+
+        # ── Create Google Sheet tab for this batch ─────────────────────────
+
+        create_sheet_tab(batch)
+        # ──────────────────────────────────────────────────────────────────
 
         flash(f'Batch "{name}" created successfully!', 'success')
         return redirect(url_for('admin.batches'))
@@ -292,32 +297,45 @@ def edit_batch(batch_id):
     current_days = {s.weekday for s in batch.schedules}
     return render_template('admin/edit_batch.html', batch=batch, current_days=current_days)
 
+
+# ============================================================================
+# PROMOTE BATCH ROUTE  
+ 
 @admin_bp.route('/batches/<int:batch_id>/promote', methods=['POST'])
 @admin_required
 def promote_batch(batch_id):
-    """
-    Promote entire batch to next level
-    """
+    """Promote entire batch to next level and create new Google Sheet tab."""
     batch = Batch.query.get_or_404(batch_id)
-    
+ 
     success, old_level, new_level = batch.promote_to_next_level()
-    
+ 
     if success:
-        # Count how many students were updated - database level
         student_count = db.session.query(func.count(User.id)).filter(
             User.batch_id == batch_id,
             User.role == 'student'
         ).scalar()
-        
+ 
         db.session.commit()
-        
-        flash(f'✓ Batch "{batch.name}" promoted from {old_level} to {new_level}! '
-              f'{student_count} students updated.', 'success')
+ 
+        # ── Create fresh Google Sheet tab for the new level ────────────────
+        from app.sheets_sync import create_sheet_tab, append_student_to_sheet
+        create_sheet_tab(batch)   # Creates "CodeCamp 3&4 - Intermediate" tab
+ 
+        # Seed all current students into the new tab
+        students = User.query.filter_by(batch_id=batch_id, role='student').all()
+        for student in students:
+            append_student_to_sheet(student)
+        # ──────────────────────────────────────────────────────────────────
+ 
+        flash(
+            f'✓ Batch "{batch.name}" promoted from {old_level} to {new_level}! '
+            f'{student_count} students updated.',
+            'success'
+        )
     else:
         flash(f'Batch "{batch.name}" is already at {batch.current_level} level', 'warning')
-    
+ 
     return redirect(url_for('admin.view_batch', batch_id=batch_id))
-
 
 @admin_bp.route('/batches/<int:batch_id>/delete', methods=['POST'])
 @admin_required
