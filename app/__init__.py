@@ -27,6 +27,9 @@ def create_app(config_class=Config):
 
     os.makedirs(app.instance_path, exist_ok=True)
 
+    from app.scheduler import init_scheduler
+    init_scheduler(app)
+
     # Register Blueprints
     # These imports are inside the factory to avoid circular dependencies
     from app.routes.auth import auth_bp
@@ -87,6 +90,7 @@ def _mark_absences_job(app):
     Now filters present_ids by student_level == batch.current_level
     so a student who scanned as beginner isn't counted as present
     for their intermediate class day.
+    Also syncs absences to Google Sheet after DB records are committed.
     """
     from datetime import date
     from sqlalchemy import func
@@ -94,6 +98,7 @@ def _mark_absences_job(app):
     with app.app_context():
         try:
             from app.models import Batch, User, Attendance, Absence
+            from app.sheets_sync import mark_batch_absences, _worksheet_name
 
             logger = logging.getLogger(__name__)
 
@@ -136,6 +141,7 @@ def _mark_absences_job(app):
 
                 # Create absence record for each student who didn't scan
                 absences_created = 0
+                absent_students  = []
                 for student in students:
                     if student.id not in present_ids:
                         existing = Absence.query.filter_by(
@@ -152,11 +158,27 @@ def _mark_absences_job(app):
                             db.session.add(absence)
                             absences_created += 1
 
+                        absent_students.append(student.name)
+
                 db.session.commit()
                 logger.info(
                     f"Batch '{batch.name}' [{batch.current_level}]: "
                     f"{absences_created} absences recorded for {today}"
                 )
+
+                # ── Sync absences to Google Sheet ──────────────────────────
+                if absent_students:
+                    sync_result = mark_batch_absences(
+                        absent_student_names = absent_students,
+                        worksheet_name       = _worksheet_name(batch),
+                    )
+                    logger.info(
+                        f"Sheet sync for '{batch.name}' [{batch.current_level}]: "
+                        f"marked={sync_result.get('marked')}, "
+                        f"not_found={sync_result.get('not_found')}, "
+                        f"errors={sync_result.get('errors')}"
+                    )
+                # ──────────────────────────────────────────────────────────
 
         except Exception:
             logger.exception("Error marking absences")

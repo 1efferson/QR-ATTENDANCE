@@ -19,9 +19,12 @@ class Config:
     # Google Sheets Configuration
     GOOGLE_SHEETS_CREDENTIALS_FILE = os.environ.get('GOOGLE_SHEETS_CREDENTIALS_FILE', 'credentials.json')
     GOOGLE_SHEET_ID = os.environ.get('GOOGLE_SHEET_ID')
+    # config.py
+    SHEETS_SPREADSHEET_NAME = "Facemark"
 
     # ngrok
     SERVER_NAME = None  
+    
     
 
     # IP Whitelisting Configuration
