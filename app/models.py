@@ -153,7 +153,7 @@ class User(UserMixin, db.Model):
     level         = db.Column(db.String(50), nullable=True)   # beginner, intermediate, advanced
     role          = db.Column(db.String(20), default='student', nullable=False)  # student, instructor, admin
     created_at    = db.Column(db.DateTime, default=datetime.utcnow)
-    batch_id      = db.Column(db.Integer, db.ForeignKey('batches.id', name='fk_user_batch_id'), nullable=True)
+    batch_id      = db.Column(db.Integer, db.ForeignKey('batches.id', name='fk_user_batch_id'), nullable=True, index=True)
 
     # Relationships
     attendances = db.relationship('Attendance', backref='student', lazy=True)
@@ -176,9 +176,9 @@ class Attendance(db.Model):
     __tablename__ = 'attendance'
 
     id               = db.Column(db.Integer, primary_key=True)
-    user_id          = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    user_id          = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     course_code      = db.Column(db.String(20), nullable=False)
-    timestamp        = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp        = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     ip_address       = db.Column(db.String(45), nullable=True)
     user_agent       = db.Column(db.String(256), nullable=True)
 
