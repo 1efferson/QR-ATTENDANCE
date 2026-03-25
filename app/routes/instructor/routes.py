@@ -347,20 +347,19 @@ def level_detail(level):
 @instructor_bp.route('/run-absence-check', methods=['POST'])
 @instructor_required
 def run_absence_check():
-    """
-    Manually trigger the absence check job.
-    Preserves current dashboard filters on redirect.
-    """
+    """Manually trigger the optimized absence check job."""
     try:
-        from app import _mark_absences_job
-        from flask import current_app
-        _mark_absences_job(current_app._get_current_object())
-        flash('Absence check completed successfully.', 'success')
-    except Exception:
-        logger.exception("Error running absence check")
-        flash('Error running absence check. Please try again.', 'error')
+        # Import the new optimized function
+        from app.scheduler import _run_absence_sync
+        
+        # Run it (it uses app_context via the scheduler logic)
+        _run_absence_sync() 
+        
+        flash('Absence check and Google Sheets sync completed successfully.', 'success')
+    except Exception as e:
+        logger.exception("Manual absence check failed")
+        flash(f'Error running check: {str(e)}', 'error')
 
-    # Preserve whatever filters the instructor had active
     return redirect(url_for('instructor.dashboard',
                             batch_id=request.form.get('batch_id'),
                             level=request.form.get('level'),

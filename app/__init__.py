@@ -27,11 +27,7 @@ def create_app(config_class=Config):
 
     os.makedirs(app.instance_path, exist_ok=True)
 
-    from app.scheduler import init_scheduler
-    init_scheduler(app)
-
     # Register Blueprints
-    # These imports are inside the factory to avoid circular dependencies
     from app.routes.auth import auth_bp
     from app.routes.instructor import instructor_bp
     from app.routes.student import student_bp
@@ -42,144 +38,10 @@ def create_app(config_class=Config):
     app.register_blueprint(instructor_bp, url_prefix='/instructor')
     app.register_blueprint(student_bp, url_prefix='/student')
     app.register_blueprint(main_bp)
-    app.register_blueprint(admin_bp, url_prefix='/admin') 
-    # -----------------------------------------------------------------------
-    # Scheduled job — marks absences at end of each class day
-    # Runs at 8pm every day. Only writes absences for batches whose
-    # schedule includes today's weekday.
-    # -----------------------------------------------------------------------
-    _start_absence_scheduler(app)
+    app.register_blueprint(admin_bp, url_prefix='/admin')
+
+    # Start the background scheduler (9 PM absence sync + Google Sheet sync)
+    from app.scheduler import init_scheduler
+    init_scheduler(app)
 
     return app
-
-
-def _start_absence_scheduler(app):
-    """
-    Start APScheduler background job to mark absent students.
-    Runs daily at 20:00 (8pm). Safe to call multiple times — checks
-    for existing scheduler to avoid duplicate jobs in debug/reload mode.
-    """
-    try:
-        from apscheduler.schedulers.background import BackgroundScheduler
-        from apscheduler.triggers.cron import CronTrigger
-
-        scheduler = BackgroundScheduler()
-        scheduler.add_job(
-            func=_mark_absences_job,
-            trigger=CronTrigger(hour=21, minute=0),
-            args=[app],
-            id='mark_absences',
-            replace_existing=True
-        )
-        scheduler.start()
-
-        import atexit
-        atexit.register(lambda: scheduler.shutdown(wait=False))
-
-    except Exception as e:
-        print(f"[Scheduler] Failed to start: {e}")
-
-
-def _mark_absences_job(app):
-    """
-    Runs inside the app context at 9pm every day.
-    For every active batch that has class today, finds all students
-    who did not scan and creates an Absence record for each one.
-    Skips students who already have an absence record for today
-    (UniqueConstraint prevents duplicates regardless).
-    Now filters present_ids by student_level == batch.current_level
-    so a student who scanned as beginner isn't counted as present
-    for their intermediate class day.
-    Also syncs absences to Google Sheet after DB records are committed.
-    """
-    from datetime import date
-    from sqlalchemy import func
-
-    with app.app_context():
-        try:
-            from app.models import Batch, User, Attendance, Absence
-            from app.sheets_sync import mark_batch_absences, _worksheet_name
-
-            logger = logging.getLogger(__name__)
-
-            today         = date.today()
-            today_weekday = today.weekday()
-
-            # Get all active batches that have class today
-            active_batches = Batch.query.filter_by(is_active=True).all()
-            class_batches  = [
-                b for b in active_batches
-                if any(s.weekday == today_weekday for s in b.schedules)
-            ]
-
-            if not class_batches:
-                logger.info(f"No batches have class today ({today}). No absences recorded.")
-                return
-
-            for batch in class_batches:
-                # Get all students in this batch
-                students = User.query.filter_by(
-                    batch_id=batch.id,
-                    role='student'
-                ).all()
-
-                if not students:
-                    continue
-
-                # Get IDs of students who scanned today at the correct level.
-                # Using student_level filter ensures a student who scanned as
-                # 'beginner' is NOT counted as present for their 'intermediate'
-                # class day after promotion.
-                present_ids = {
-                    row[0] for row in db.session.query(Attendance.user_id).filter(
-                        Attendance.user_id.in_([s.id for s in students]),
-                        func.date(Attendance.timestamp) == today,
-                        Attendance.is_personal_time == False,
-                        Attendance.student_level == batch.current_level
-                    ).all()
-                }
-
-                # Create absence record for each student who didn't scan
-                absences_created = 0
-                absent_students  = []
-                for student in students:
-                    if student.id not in present_ids:
-                        existing = Absence.query.filter_by(
-                            user_id=student.id,
-                            date=today
-                        ).first()
-
-                        if not existing:
-                            absence = Absence(
-                                user_id=student.id,
-                                batch_id=batch.id,
-                                date=today
-                            )
-                            db.session.add(absence)
-                            absences_created += 1
-
-                        absent_students.append(student.name)
-
-                db.session.commit()
-                logger.info(
-                    f"Batch '{batch.name}' [{batch.current_level}]: "
-                    f"{absences_created} absences recorded for {today}"
-                )
-
-                # ── Sync absences to Google Sheet ──────────────────────────
-                if absent_students:
-                    sync_result = mark_batch_absences(
-                        absent_student_names = absent_students,
-                        worksheet_name       = _worksheet_name(batch),
-                    )
-                    logger.info(
-                        f"Sheet sync for '{batch.name}' [{batch.current_level}]: "
-                        f"marked={sync_result.get('marked')}, "
-                        f"not_found={sync_result.get('not_found')}, "
-                        f"errors={sync_result.get('errors')}"
-                    )
-                # ──────────────────────────────────────────────────────────
-
-        except Exception:
-            logger.exception("Error marking absences")
-            db.session.rollback()
