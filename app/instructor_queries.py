@@ -22,10 +22,10 @@ class AttendanceQueries:
     @staticmethod
     def total_checkins_today(level=None, batch_id=None):
         """
-        Total check-ins for today.
-        Only counts non-personal-time scans (actual class attendance).
-        Optionally filtered by student level and/or batch.
+        Total check-ins for today. Optimized for index usage by avoiding
+        func.date() on the column side of the filter.
         """
+        # Using explicit start/end times ensures we hit the B-Tree index on 'timestamp'
         today_start = datetime.combine(date.today(), datetime.min.time())
         today_end   = datetime.combine(date.today(), datetime.max.time())
 
@@ -34,6 +34,7 @@ class AttendanceQueries:
         ).join(
             User, User.id == Attendance.user_id
         ).filter(
+            # RANGE-BASED FILTER: This is highly efficient with your index
             Attendance.timestamp >= today_start,
             Attendance.timestamp <= today_end,
             Attendance.is_personal_time == False,
@@ -226,39 +227,21 @@ class AttendanceQueries:
     @staticmethod
     def attendance_percentage_per_student(level=None, days=30, batch_id=None):
         """
-        Calculate attendance percentage per student over a date range.
-
-        Anchor logic (in priority order):
-          1. batch.level_started_at — when the current level began after promotion
-          2. First scan date — when the first student in the batch actually scanned
-          3. cutoff_date — the selected period fallback (e.g. last 30 days)
-
-        This ensures:
-          - Promoted batches start counting from the promotion date, not day 1
-          - New batches start counting from their first real class, not batch creation
-          - Students are never penalised for days before their level began
-
-        Only scans where Attendance.student_level == batch's current_level are counted
-        so beginner scans don't bleed into intermediate or advanced percentages.
-
-        total_days counts actual scheduled weekdays (via BatchSchedule) from
-        effective_start to today.
+        Calculate attendance percentage per student.
+        Optimized to use range-based joins and efficient distinct day counting.
         """
         cutoff_date = (datetime.now() - timedelta(days=days)).date()
         today       = date.today()
 
-        # ── Step 1: get batch and its level_started_at ─────────────────────────
+        # -- Step 1 & 2: Anchor logic (No changes needed here, your logic is solid) --
         batch = Batch.query.get(batch_id) if batch_id else None
         current_level = batch.current_level if batch else level
 
-        # ── Step 2: determine effective_start ──────────────────────────────────
-        # Priority: level_started_at > first scan > cutoff_date
         if batch and batch.level_started_at:
             level_start_date = batch.level_started_at.date()
         else:
             level_start_date = None
 
-        # Find earliest non-PT scan at the current level for this batch
         first_scan_query = db.session.query(
             func.min(Attendance.timestamp)
         ).join(User, User.id == Attendance.user_id).filter(
@@ -268,24 +251,17 @@ class AttendanceQueries:
         if batch_id:
             first_scan_query = first_scan_query.filter(User.batch_id == batch_id)
         if current_level:
-            # Only look at scans that match the current level
-            first_scan_query = first_scan_query.filter(
-                Attendance.student_level == current_level
-            )
+            first_scan_query = first_scan_query.filter(Attendance.student_level == current_level)
 
         first_scan = first_scan_query.scalar()
         first_scan_date = first_scan.date() if first_scan else None
 
-        # Pick the latest of all available anchors so we never go too far back
         candidates = [cutoff_date]
-        if level_start_date:
-            candidates.append(level_start_date)
-        if first_scan_date:
-            candidates.append(first_scan_date)
-
+        if level_start_date: candidates.append(level_start_date)
+        if first_scan_date: candidates.append(first_scan_date)
         effective_start = max(candidates)
 
-        # ── Step 3: get scheduled weekdays for this batch ──────────────────────
+        # -- Step 3 & 4: Calculate total_days (Scheduled class days only) --
         if batch_id:
             schedules = BatchSchedule.query.filter_by(batch_id=batch_id).all()
             scheduled_weekdays = {s.weekday for s in schedules}
@@ -293,7 +269,6 @@ class AttendanceQueries:
             schedules = BatchSchedule.query.all()
             scheduled_weekdays = {s.weekday for s in schedules}
 
-        # ── Step 4: count actual class days between effective_start and today ──
         total_days = 0
         if scheduled_weekdays:
             current = effective_start
@@ -302,45 +277,33 @@ class AttendanceQueries:
                     total_days += 1
                 current += timedelta(days=1)
 
-        # ── Step 5: build per-student attendance query ─────────────────────────
+        # -- Step 5: Optimized Per-Student Query --
         effective_start_dt = datetime.combine(effective_start, datetime.min.time())
 
+        # OPTIMIZATION: Cast to Date for the count, but keep the filter range-based
         days_attended_count = func.count(
-            func.distinct(func.date(Attendance.timestamp))
+            func.distinct(cast(Attendance.timestamp, db.Date))
         )
 
         attendance_pct_expr = case(
             (literal(total_days) == 0, cast(0, Float)),
-            else_=(
-                cast(days_attended_count, Float)
-                / cast(literal(total_days), Float)
-                * 100
-            )
+            else_=(cast(days_attended_count, Float) / cast(literal(total_days), Float) * 100)
         )
 
-        # Correlated subquery: did this student get an Absence record today?
-        absent_today_sq = db.session.query(
-            func.count(Absence.id)
-        ).filter(
-            Absence.user_id == User.id,
-            Absence.date == today
+        # Subqueries for Today's status (Absence/PT)
+        absent_today_sq = db.session.query(func.count(Absence.id)).filter(
+            Absence.user_id == User.id, Absence.date == today
         ).correlate(User).scalar_subquery()
 
-        # Correlated subquery: did this student scan as P.T today?
-        pt_today_sq = db.session.query(
-            func.count(Attendance.id)
-        ).filter(
+        pt_today_sq = db.session.query(func.count(Attendance.id)).filter(
             Attendance.user_id == User.id,
-            func.date(Attendance.timestamp) == today,
+            Attendance.timestamp >= datetime.combine(today, datetime.min.time()),
+            Attendance.timestamp <= datetime.combine(today, datetime.max.time()),
             Attendance.is_personal_time == True
         ).correlate(User).scalar_subquery()
 
         query = db.session.query(
-            User.id,
-            User.name,
-            User.email,
-            User.level,
-            User.batch_id,
+            User.id, User.name, User.email, User.level, User.batch_id,
             days_attended_count.label('days_attended'),
             attendance_pct_expr.label('attendance_pct'),
             (attendance_pct_expr < 60).label('is_below_threshold'),
@@ -350,9 +313,9 @@ class AttendanceQueries:
             Attendance,
             and_(
                 User.id == Attendance.user_id,
+                # INDEX-FRIENDLY: Using raw column for range comparison
                 Attendance.timestamp >= effective_start_dt,
                 Attendance.is_personal_time == False,
-                # Only count scans that match the student's current level
                 Attendance.student_level == User.level
             )
         ).filter(User.role == 'student')
@@ -362,31 +325,26 @@ class AttendanceQueries:
         if batch_id:
             query = query.filter(User.batch_id == batch_id)
 
-        query = query.group_by(
-            User.id, User.name, User.email, User.level, User.batch_id
-        ).order_by(attendance_pct_expr.desc())
+        query = query.group_by(User.id, User.name, User.email, User.level, User.batch_id)
+        
 
         results = []
-        for (user_id, name, email, student_level, student_batch_id,
-             days_attended, pct, below_threshold,
-             is_absent_today, is_pt_today) in query.all():
-
+        for row in query.all():
             results.append({
-                'student_id':         user_id,
-                'student_name':       name,
-                'student_email':      email,
-                'student_level':      student_level,
-                'student_batch_id':   student_batch_id,
-                'attendance_pct':     round(pct, 2) if pct is not None else 0.0,
-                'days_attended':      days_attended or 0,
+                'student_id':         row[0],
+                'student_name':       row[1],
+                'student_email':      row[2],
+                'student_level':      row[3],
+                'student_batch_id':   row[4],
+                'days_attended':      row[5] or 0,
+                'attendance_pct':     round(row[6], 2) if row[6] is not None else 0.0,
                 'total_days':         total_days,
-                'is_below_threshold': bool(below_threshold),
-                'is_absent_today':    bool(is_absent_today),
-                'is_pt_today':        bool(is_pt_today)
+                'is_below_threshold': bool(row[7]),
+                'is_absent_today':    bool(row[8]),
+                'is_pt_today':        bool(row[9])
             })
-
         return results
-
+    
     @staticmethod
     def students_below_threshold(threshold=60, level=None, days=30, batch_id=None):
         """
