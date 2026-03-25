@@ -305,19 +305,18 @@ def mark_batch_absences(
     target_date=None,
 ) -> dict:
     """
-    Bulk-mark students Absent (0) for target_date.
-    Called by the 9 PM APScheduler job.
-    Uses a single batch API call to stay within quota.
+    Optimized bulk-mark students Absent (0).
+    Fetches full columns to minimize API hits and prevent 429 errors.
     """
     target_date = target_date or date.today()
-    date_str    = datetime.combine(target_date, datetime.min.time()).strftime(DATE_FORMAT)
+    date_str = datetime.combine(target_date, datetime.min.time()).strftime(DATE_FORMAT)
 
     result = {
-        "success":     True,
-        "marked":      [],
-        "not_found":   [],
+        "success": True,
+        "marked": [],
+        "not_found": [],
         "already_set": [],
-        "errors":      [],
+        "errors": [],
     }
 
     if not absent_student_names:
@@ -325,35 +324,49 @@ def mark_batch_absences(
         return result
 
     try:
-        ws      = _get_worksheet(worksheet_name)
-        col     = _get_or_create_date_col(ws, date_str)
+        ws = _get_worksheet(worksheet_name)
+        col_idx = _get_or_create_date_col(ws, date_str)
+        
+        # --- Fetch entire columns at once ---
+        # Get all names in Col A and all attendance values in the target column
+        all_names = ws.col_values(1)
+        all_attendance_values = ws.col_values(col_idx)
+        
+        # Ensure the attendance list is as long as the names list to avoid index errors
+        while len(all_attendance_values) < len(all_names):
+            all_attendance_values.append("")
+
         updates = []
+        # Create a lowercase map for faster student-to-row lookups
+        name_map = {name.strip().lower(): idx + 1 for idx, name in enumerate(all_names)}
 
         for name in absent_student_names:
-            row = _find_student_row(ws, name)
-            if row is None:
-                logger.warning("Absent student '%s' not found in sheet.", name)
+            search_name = name.strip().lower()
+            row_idx = name_map.get(search_name)
+
+            if row_idx is None or row_idx < FIRST_DATA_ROW:
+                logger.warning("Absent student '%s' not found in sheet '%s'.", name, worksheet_name)
                 result["not_found"].append(name)
                 continue
-            try:
-                existing = ws.cell(row, col).value
-                if existing is not None and str(existing).strip() != "":
-                    logger.info("'%s' already has value '%s' — skipping.", name, existing)
-                    result["already_set"].append(name)
-                    continue
-                cell_a1 = gspread.utils.rowcol_to_a1(row, col)
-                updates.append({"range": cell_a1, "values": [[VALUE_ABSENT]]})
-                result["marked"].append(name)
-            except Exception as e:
-                logger.error("Error processing '%s': %s", name, e)
-                result["errors"].append(f"{name}: {e}")
 
+            # Check value in our local list instead of calling the API again
+            # all_attendance_values is 0-indexed, row_idx is 1-indexed
+            existing_val = all_attendance_values[row_idx - 1]
+
+            if str(existing_val).strip() != "":
+                # Student already has a 1 (Present) or 0 (Absent) — don't overwrite
+                result["already_set"].append(name)
+                continue
+
+            # Add to batch update list
+            cell_a1 = gspread.utils.rowcol_to_a1(row_idx, col_idx)
+            updates.append({"range": cell_a1, "values": [[VALUE_ABSENT]]})
+            result["marked"].append(name)
+
+        # Send all updates in a single API call
         if updates:
             ws.batch_update(updates)
-            logger.info(
-                "Marked %d students Absent (0) on %s in tab '%s'.",
-                len(updates), date_str, worksheet_name
-            )
+            logger.info("Sync success: Marked %d absences in '%s'.", len(updates), worksheet_name)
 
         if result["not_found"] or result["errors"]:
             result["success"] = False
@@ -362,10 +375,9 @@ def mark_batch_absences(
 
     except APIError as e:
         if e.response.status_code == 429:
-            logger.error("API quota exceeded during absence sync.")
+            logger.error("Google Sheets API quota exceeded. Consider increasing backoff.")
             return {**result, "success": False, "message": "API quota exceeded."}
-        logger.error("Sheets API error during absence sync: %s", e)
-        return {**result, "success": False, "message": str(e)}
+        raise e # Let the scheduler's retry logic handle other API errors
     except Exception as e:
-        logger.exception("Unexpected error in mark_batch_absences: %s", e)
+        logger.exception("Unexpected error in mark_batch_absences")
         return {**result, "success": False, "message": str(e)}
