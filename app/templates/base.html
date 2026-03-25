@@ -169,5 +169,60 @@
         }
     </script>
 
+    <script>
+    // ── Generic Modal Manager ─────────────────────────────────────────────
+    // Usage: openModal('myModalId') / closeModal('myModalId')
+    // Any modal just needs: id, hidden class, flex for centering,
+    // and an inner card with id="{modalId}Card" for the scale animation.
+
+    function openModal(id) {
+        const modal = document.getElementById(id);
+        if (!modal) return;
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        const card = document.getElementById(id + 'Card');
+        if (card) {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    card.classList.remove('scale-95', 'opacity-0');
+                    card.classList.add('scale-100', 'opacity-100');
+                });
+            });
+        }
+    }
+
+    function closeModal(id) {
+        const modal = document.getElementById(id);
+        if (!modal) return;
+        const card = document.getElementById(id + 'Card');
+        if (card) {
+            card.classList.remove('scale-100', 'opacity-100');
+            card.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }, 200);
+        } else {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+    }
+
+    // Backdrop click and Escape key — works for ALL modals on any page
+    document.addEventListener('click', function (e) {
+        if (e.target.classList.contains('modal-backdrop')) {
+            closeModal(e.target.id);
+        }
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.modal-backdrop:not(.hidden)').forEach(m => {
+                closeModal(m.id);
+            });
+        }
+    });
+</script>
+
 </body>
 </html>
