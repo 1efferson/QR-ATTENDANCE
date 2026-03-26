@@ -17,7 +17,8 @@ from sqlalchemy import func, and_
 from app import db
 from app.models import User, Batch, ApprovedStudent, Attendance, BatchSchedule
 from datetime import datetime, timedelta
-from app.sheets_sync import create_sheet_tab
+from app.sheets_sync import create_sheet_tab, append_student_to_sheet
+import threading
 from . import admin_bp
 
 
@@ -191,7 +192,13 @@ def create_batch():
 
         # ── Create Google Sheet tab for this batch ─────────────────────────
 
-        create_sheet_tab(batch)
+        
+        # ── Fire sheet creation in background — don't block the response ──
+        
+        thread = threading.Thread(target=create_sheet_tab, args=(batch,), daemon=True)
+        thread.start()
+        # ──────────────────────────────────────────────────────────────────
+
         # ──────────────────────────────────────────────────────────────────
 
         flash(f'Batch "{name}" created successfully!', 'success')
@@ -304,37 +311,34 @@ def edit_batch(batch_id):
 @admin_bp.route('/batches/<int:batch_id>/promote', methods=['POST'])
 @admin_required
 def promote_batch(batch_id):
-    """Promote entire batch to next level and create new Google Sheet tab."""
     batch = Batch.query.get_or_404(batch_id)
- 
     success, old_level, new_level = batch.promote_to_next_level()
- 
+
     if success:
         student_count = db.session.query(func.count(User.id)).filter(
-            User.batch_id == batch_id,
-            User.role == 'student'
+            User.batch_id == batch_id, User.role == 'student'
         ).scalar()
- 
+
         db.session.commit()
- 
-        # ── Create fresh Google Sheet tab for the new level ────────────────
-        from app.sheets_sync import create_sheet_tab, append_student_to_sheet
-        create_sheet_tab(batch)   # Creates "CodeCamp 3&4 - Intermediate" tab
- 
-        # Seed all current students into the new tab
+
+        # ── Fire sheet tab creation + student seeding in background ───────
+        
         students = User.query.filter_by(batch_id=batch_id, role='student').all()
-        for student in students:
-            append_student_to_sheet(student)
+
+        def sync_promotion():
+            create_sheet_tab(batch)
+            for student in students:
+                append_student_to_sheet(student)
+
+        thread = threading.Thread(target=sync_promotion, daemon=True)
+        thread.start()
         # ──────────────────────────────────────────────────────────────────
- 
-        flash(
-            f'✓ Batch "{batch.name}" promoted from {old_level} to {new_level}! '
-            f'{student_count} students updated.',
-            'success'
-        )
+
+        flash(f'✓ Batch "{batch.name}" promoted from {old_level} to {new_level}! '
+              f'{student_count} students updated.', 'success')
     else:
         flash(f'Batch "{batch.name}" is already at {batch.current_level} level', 'warning')
- 
+
     return redirect(url_for('admin.view_batch', batch_id=batch_id))
 
 @admin_bp.route('/batches/<int:batch_id>/delete', methods=['POST'])
