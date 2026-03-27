@@ -66,22 +66,43 @@
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
                         <div class="flex justify-center gap-2">
+                            <!-- View -->
                             <a href="{{ url_for('admin.view_batch', batch_id=batch.id) }}" class="text-indigo-600 hover:text-indigo-900" title="View Details">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
                                 </svg>
                             </a>
+                            <!-- Edit -->
                             <a href="{{ url_for('admin.edit_batch', batch_id=batch.id) }}" class="text-blue-600 hover:text-blue-900" title="Edit">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                                 </svg>
                             </a>
+                            <!-- Manage Students -->
                             <a href="{{ url_for('admin.manage_approved_students', batch_id=batch.id) }}" class="text-green-600 hover:text-green-900" title="Manage Students">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
                                 </svg>
                             </a>
+                            <!-- Deactivate -->
+                            {% if batch.is_active %}
+                            <button type="button"
+                                onclick="openBatchModal('deactivateBatchModal', {{ batch.id }}, '{{ batch.name|e }}')"
+                                class="text-yellow-600 hover:text-yellow-900" title="Deactivate Batch">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636l-12.728 12.728M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707"/>
+                                </svg>
+                            </button>
+                            {% endif %}
+                            <!-- Permanent Delete -->
+                            <button type="button"
+                                onclick="openBatchModal('permanentDeleteBatchModal', {{ batch.id }}, '{{ batch.name|e }}')"
+                                class="text-red-600 hover:text-red-900" title="Permanently Delete Batch">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                </svg>
+                            </button>
                         </div>
                     </td>
                 </tr>
@@ -102,4 +123,165 @@
         {% endif %}
     </div>
 </div>
+
+
+{# ══════════════════════════════════════════════════════════
+   MODAL: Deactivate Batch
+   ══════════════════════════════════════════════════════════ #}
+<div id="deactivateBatchModal"
+     class="modal-backdrop fixed inset-0 z-50 hidden items-center justify-center bg-black/50 backdrop-blur-sm">
+    <div id="deactivateBatchModalCard"
+         class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden
+                transform transition-all duration-200 scale-95 opacity-0">
+
+        <div class="h-1.5 bg-gradient-to-r from-yellow-400 to-orange-500"></div>
+
+        <div class="p-6">
+            <div class="flex items-start gap-4 mb-5">
+                <div class="flex-shrink-0 w-11 h-11 rounded-full bg-yellow-100 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900">Deactivate <span id="deactivateBatchName" class="text-yellow-700">"…"</span>?</h3>
+                    <p class="text-sm text-gray-500 mt-1">This hides the batch and unassigns all students.</p>
+                </div>
+            </div>
+
+            <ul class="space-y-2.5 mb-6">
+                <li class="flex items-start gap-2.5 text-sm text-gray-700">
+                    <svg class="w-4 h-4 text-yellow-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    All students will be <span class="font-medium text-gray-900 mx-1">unassigned</span> from this batch
+                </li>
+                <li class="flex items-start gap-2.5 text-sm text-gray-700">
+                    <svg class="w-4 h-4 text-yellow-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    Batch will be <span class="font-medium text-gray-900 mx-1">hidden from registration</span>
+                </li>
+                <li class="flex items-start gap-2.5 text-sm text-gray-700">
+                    <svg class="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    Attendance history and records are <span class="font-medium text-gray-900 mx-1">preserved</span>
+                </li>
+            </ul>
+
+            <div class="flex gap-3">
+                <button type="button" onclick="closeModal('deactivateBatchModal')"
+                    class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition text-sm">
+                    Cancel
+                </button>
+                <form id="deactivateBatchForm" method="POST" action="" class="flex-1">
+                    <button type="submit"
+                        class="w-full px-4 py-2.5 bg-yellow-500 text-white font-medium rounded-lg
+                               hover:bg-yellow-600 transition text-sm flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M18.364 5.636l-12.728 12.728"/>
+                        </svg>
+                        Yes, Deactivate
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+{# ══════════════════════════════════════════════════════════
+   MODAL: Permanently Delete Batch
+   ══════════════════════════════════════════════════════════ #}
+<div id="permanentDeleteBatchModal"
+     class="modal-backdrop fixed inset-0 z-50 hidden items-center justify-center bg-black/50 backdrop-blur-sm">
+    <div id="permanentDeleteBatchModalCard"
+         class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden
+                transform transition-all duration-200 scale-95 opacity-0">
+
+        <div class="h-1.5 bg-gradient-to-r from-red-500 to-rose-700"></div>
+
+        <div class="p-6">
+            <div class="flex items-start gap-4 mb-5">
+                <div class="flex-shrink-0 w-11 h-11 rounded-full bg-red-100 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900">Permanently Delete <span id="permanentDeleteBatchName" class="text-red-700">"…"</span>?</h3>
+                    <p class="text-sm text-gray-500 mt-1">This cannot be undone. Everything will be wiped.</p>
+                </div>
+            </div>
+
+            <ul class="space-y-2.5 mb-6">
+                <li class="flex items-start gap-2.5 text-sm text-gray-700">
+                    <svg class="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    Batch schedule, approved list, and <span class="font-medium text-gray-900 mx-1">all attendance records</span> deleted
+                </li>
+                <li class="flex items-start gap-2.5 text-sm text-gray-700">
+                    <svg class="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    Student accounts are <span class="font-medium text-gray-900 mx-1">kept</span> but become unassigned
+                </li>
+                <li class="flex items-start gap-2.5 text-sm text-gray-700">
+                    <svg class="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    The batch record is <span class="font-medium text-gray-900 mx-1">permanently removed</span> from the database
+                </li>
+            </ul>
+
+            <div class="flex gap-3">
+                <button type="button" onclick="closeModal('permanentDeleteBatchModal')"
+                    class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition text-sm">
+                    Cancel
+                </button>
+                <form id="permanentDeleteBatchForm" method="POST" action="" class="flex-1">
+                    <button type="submit"
+                        class="w-full px-4 py-2.5 bg-red-600 text-white font-medium rounded-lg
+                               hover:bg-red-700 transition text-sm flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                        </svg>
+                        Yes, Delete Everything
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<script>
+/**
+ * Batch-specific modal helper.
+ * Populates the correct name label and form action before opening.
+ *
+ * @param {string} modalId   - 'deactivateBatchModal' | 'permanentDeleteBatchModal'
+ * @param {number} batchId   - batch.id from Jinja
+ * @param {string} batchName - batch.name from Jinja
+ */
+function openBatchModal(modalId, batchId, batchName) {
+    if (modalId === 'deactivateBatchModal') {
+        document.getElementById('deactivateBatchName').textContent = '"' + batchName + '"';
+        document.getElementById('deactivateBatchForm').action =
+            '/admin/batches/' + batchId + '/deactivate';
+    } else if (modalId === 'permanentDeleteBatchModal') {
+        document.getElementById('permanentDeleteBatchName').textContent = '"' + batchName + '"';
+        document.getElementById('permanentDeleteBatchForm').action =
+            '/admin/batches/' + batchId + '/delete-permanent';
+    }
+    openModal(modalId);   // calls the global helper from base.html
+}
+</script>
+
 {% endblock %}
