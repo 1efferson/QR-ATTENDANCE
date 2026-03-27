@@ -20,6 +20,10 @@ from datetime import datetime, timedelta
 from app.sheets_sync import create_sheet_tab, append_student_to_sheet
 import threading
 from . import admin_bp
+import logging
+
+# Initialize logger for this module
+logger = logging.getLogger(__name__)
 
 
 def admin_required(f):
@@ -401,91 +405,117 @@ def manage_approved_students(batch_id):
 @admin_bp.route('/batches/<int:batch_id>/students/add', methods=['POST'])
 @admin_required
 def add_approved_student(batch_id):
-    """Add single student to approved list"""
+    """Add a single student to the approved list with required email verification."""
     batch = Batch.query.get_or_404(batch_id)
     
+    # 1. Capture and Clean Input
     name = request.form.get('name', '').strip()
-    email = request.form.get('email', '').strip()
+    email = request.form.get('email', '').strip().lower() # Normalize to lowercase
     
-    if not name:
-        flash('Student name is required', 'error')
+    # 2. Strict Validation: Both fields are now mandatory
+    if not name or not email:
+        logger.warning(f"Admin {current_user.email} attempted to add student with missing fields.")
+        flash('Both Student Name and Email are strictly required.', 'error')
         return redirect(url_for('admin.manage_approved_students', batch_id=batch_id))
     
-    # Check if already exists - database level
-    existing_count = db.session.query(func.count(ApprovedStudent.id)).filter(
-        ApprovedStudent.batch_id == batch_id,
-        func.lower(ApprovedStudent.name) == name.lower()
-    ).scalar()
+    try:
+        # 3. Duplicate Check: Check by EMAIL (The unique identifier)
+        existing_student = ApprovedStudent.query.filter(
+            ApprovedStudent.batch_id == batch_id,
+            db.func.lower(ApprovedStudent.email) == email
+        ).first()
+        
+        if existing_student:
+            logger.info(f"Duplicate entry blocked: Email {email} already in Batch {batch.id}")
+            flash(f'The email "{email}" is already on the approved list for this batch.', 'warning')
+            return redirect(url_for('admin.manage_approved_students', batch_id=batch_id))
+        
+        # 4. Add to approved list
+        # We save 'name' as provided (Title Case usually) but email as lowercase
+        approved = ApprovedStudent(
+            batch_id=batch_id,
+            name=name,
+            email=email
+        )
+        
+        db.session.add(approved)
+        db.session.commit()
+        
+        logger.info(f"Admin {current_user.email} added {email} to {batch.name} approved list.")
+        flash(f'✓ {name} ({email}) added to approved list for {batch.name}.', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error adding single student {email}: {e}")
+        flash("A database error occurred. Please try again.", "error")
     
-    if existing_count > 0:
-        flash(f'{name} is already on the approved list', 'warning')
-        return redirect(url_for('admin.manage_approved_students', batch_id=batch_id))
-    
-    # Add to approved list
-    approved = ApprovedStudent(
-        batch_id=batch_id,
-        name=name,
-        email=email if email else None
-    )
-    
-    db.session.add(approved)
-    db.session.commit()
-    
-    flash(f'{name} added to approved list for {batch.name}', 'success')
     return redirect(url_for('admin.manage_approved_students', batch_id=batch_id))
 
 
 @admin_bp.route('/batches/<int:batch_id>/students/bulk-upload', methods=['POST'])
 @admin_required
 def bulk_upload_students(batch_id):
-    """
-    Bulk upload students (one name per line)
-    Batch insert with database-level duplicate checking
-    """
     batch = Batch.query.get_or_404(batch_id)
     
-    student_names = request.form.get('student_names', '')
+    student_data = request.form.get('student_data', '')
     
-    if not student_names:
-        flash('Please enter student names', 'error')
+    if not student_data:
+        flash('Please enter student details', 'error')
         return redirect(url_for('admin.manage_approved_students', batch_id=batch_id))
     
-    # Parse names (one per line)
-    names = [line.strip() for line in student_names.split('\n') if line.strip()]
-    
-    # Get existing names in one query - database level
-    existing_names = db.session.query(
-        func.lower(ApprovedStudent.name)
-    ).filter(
-        ApprovedStudent.batch_id == batch_id
+    # Get existing emails in this batch to prevent duplicates
+    existing_emails = db.session.query(ApprovedStudent.email).filter(
+        ApprovedStudent.batch_id == batch_id,
+        ApprovedStudent.email.isnot(None)
     ).all()
+    existing_emails_set = {email[0].lower() for email in existing_emails}
     
-    existing_names_set = {name[0] for name in existing_names}
-    
-    # Prepare batch insert
     new_students = []
     skipped_count = 0
+    invalid_count = 0  # Track lines that failed the Name, Email format
     
-    for name in names:
-        if name.lower() in existing_names_set:
+    # Process each line
+    lines = student_data.strip().split('\n')
+    for line in lines:
+        if not line.strip():
+            continue
+            
+        # Split by comma
+        parts = [p.strip() for p in line.split(',')]
+        
+        # ENFORCEMENT: Ensure both Name AND Email are provided
+        if len(parts) < 2 or not parts[0] or not parts[1]:
+            invalid_count += 1
+            continue
+            
+        name = parts[0]
+        email = parts[1]
+        
+        # Validation: Check if email already exists in this batch
+        if email.lower() in existing_emails_set:
             skipped_count += 1
             continue
-        
+            
         new_students.append(ApprovedStudent(
             batch_id=batch_id,
-            name=name
+            name=name,
+            email=email
         ))
     
-    # Bulk insert - single database operation
+    # Bulk insert
     if new_students:
         db.session.bulk_save_objects(new_students)
         db.session.commit()
     
-    added_count = len(new_students)
-    
-    flash(f'✓ Added {added_count} students. Skipped {skipped_count} duplicates.', 'success')
+    # Construct feedback message
+    message = f'✓ Added {len(new_students)} students.'
+    if skipped_count > 0:
+        message += f' Skipped {skipped_count} duplicates.'
+    if invalid_count > 0:
+        message += f' Skipped {invalid_count} invalid lines (missing email).'
+        
+    flash(message, 'success' if len(new_students) > 0 else 'warning')
     return redirect(url_for('admin.manage_approved_students', batch_id=batch_id))
-
 
 @admin_bp.route('/approved-students/<int:id>/delete', methods=['POST'])
 @admin_required
