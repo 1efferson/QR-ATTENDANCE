@@ -139,35 +139,52 @@
         </form>
     </div>
 
-   <!-- Danger Zone -->
+    <!-- Danger Zone -->
     <div class="mt-8 bg-white rounded-lg shadow p-6 border border-red-200">
         <h3 class="text-lg font-semibold text-red-900 mb-4">Danger Zone</h3>
-        <div class="flex items-center justify-between">
+
+        <!-- Deactivate -->
+        <div class="flex items-center justify-between pb-5 border-b border-gray-100">
             <div>
                 <p class="text-sm font-medium text-gray-900">Deactivate this batch</p>
-                <p class="text-sm text-gray-600 mt-1">This will unassign all students and hide the batch from registration</p>
+                <p class="text-sm text-gray-600 mt-1">Unassigns all students and hides the batch from registration. Data is kept.</p>
             </div>
             <button type="button" onclick="openModal('deactivateModal')"
-                class="px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition">
+                class="px-4 py-2 bg-yellow-500 text-white font-medium rounded-lg hover:bg-yellow-600 transition whitespace-nowrap ml-4">
                 Deactivate Batch
+            </button>
+        </div>
+
+        <!-- Permanent Delete -->
+        <div class="flex items-center justify-between pt-5">
+            <div>
+                <p class="text-sm font-medium text-gray-900">Permanently delete this batch</p>
+                <p class="text-sm text-gray-600 mt-1">Wipes the batch, schedule, approved list, and all attendance records. Cannot be undone.</p>
+            </div>
+            <button type="button" onclick="openModal('permanentDeleteBatchEditModal')"
+                class="px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition whitespace-nowrap ml-4">
+                Delete Permanently
             </button>
         </div>
     </div>
 </div>
 
-<!-- Deactivate Modal -->
+
+{# ══════════════════════════════════════════════════════════
+   MODAL: Deactivate Batch  (fixed route: deactivate_batch)
+   ══════════════════════════════════════════════════════════ #}
 <div id="deactivateModal"
      class="modal-backdrop fixed inset-0 z-50 hidden items-center justify-center bg-black/50 backdrop-blur-sm">
     <div id="deactivateModalCard"
          class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden
                 transform transition-all duration-200 scale-95 opacity-0">
 
-        <div class="h-1.5 bg-gradient-to-r from-red-500 to-rose-600"></div>
+        <div class="h-1.5 bg-gradient-to-r from-yellow-400 to-orange-500"></div>
 
         <div class="p-6">
             <div class="flex items-start gap-4 mb-5">
-                <div class="flex-shrink-0 w-11 h-11 rounded-full bg-red-100 flex items-center justify-center">
-                    <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div class="flex-shrink-0 w-11 h-11 rounded-full bg-yellow-100 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                               d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667
                                  1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464
@@ -212,15 +229,84 @@
                     class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition text-sm">
                     Cancel
                 </button>
-                <form method="POST" action="{{ url_for('admin.delete_batch', batch_id=batch.id) }}" class="flex-1">
+             
+                <form method="POST" action="{{ url_for('admin.deactivate_batch', batch_id=batch.id) }}" class="flex-1">
                     <button type="submit"
-                        class="w-full px-4 py-2.5 bg-red-600 text-white font-medium rounded-lg
-                               hover:bg-red-700 transition text-sm flex items-center justify-center gap-2">
+                        class="w-full px-4 py-2.5 bg-yellow-500 text-white font-medium rounded-lg
+                               hover:bg-yellow-600 transition text-sm flex items-center justify-center gap-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                   d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
                         </svg>
                         Yes, Deactivate
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+{# ══════════════════════════════════════════════════════════
+   MODAL: Permanently Delete Batch (from edit page)
+   ══════════════════════════════════════════════════════════ #}
+<div id="permanentDeleteBatchEditModal"
+     class="modal-backdrop fixed inset-0 z-50 hidden items-center justify-center bg-black/50 backdrop-blur-sm">
+    <div id="permanentDeleteBatchEditModalCard"
+         class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden
+                transform transition-all duration-200 scale-95 opacity-0">
+
+        <div class="h-1.5 bg-gradient-to-r from-red-500 to-rose-700"></div>
+
+        <div class="p-6">
+            <div class="flex items-start gap-4 mb-5">
+                <div class="flex-shrink-0 w-11 h-11 rounded-full bg-red-100 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900">Permanently Delete "{{ batch.name }}"?</h3>
+                    <p class="text-sm text-gray-500 mt-1">This wipes everything. It cannot be undone.</p>
+                </div>
+            </div>
+
+            <ul class="space-y-2.5 mb-6">
+                <li class="flex items-start gap-2.5 text-sm text-gray-700">
+                    <svg class="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    Batch schedule, approved list, and <span class="font-medium text-gray-900 mx-1">all attendance records</span> deleted
+                </li>
+                <li class="flex items-start gap-2.5 text-sm text-gray-700">
+                    <svg class="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    Student accounts are <span class="font-medium text-gray-900 mx-1">kept</span> but become unassigned
+                </li>
+                <li class="flex items-start gap-2.5 text-sm text-gray-700">
+                    <svg class="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    The batch record is <span class="font-medium text-gray-900 mx-1">permanently removed</span>
+                </li>
+            </ul>
+
+            <div class="flex gap-3">
+                <button type="button" onclick="closeModal('permanentDeleteBatchEditModal')"
+                    class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition text-sm">
+                    Cancel
+                </button>
+                <form method="POST" action="{{ url_for('admin.permanent_delete_batch', batch_id=batch.id) }}" class="flex-1">
+                    <button type="submit"
+                        class="w-full px-4 py-2.5 bg-red-600 text-white font-medium rounded-lg
+                               hover:bg-red-700 transition text-sm flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                        </svg>
+                        Yes, Delete Everything
                     </button>
                 </form>
             </div>

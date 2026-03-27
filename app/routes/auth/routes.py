@@ -2,6 +2,7 @@ from flask import render_template, redirect, url_for, flash, request
 from flask_login import login_user, logout_user, current_user, login_required
 from datetime import datetime
 from app.sheets_sync import append_student_to_sheet
+import logging
 
 # 1. Local blueprint import
 from . import auth_bp
@@ -13,91 +14,116 @@ from app import db
 from app.models import User, Batch, ApprovedStudent
 from app.forms import LoginForm, RegistrationForm
 
+# Initialize logger for this module
+logger = logging.getLogger(__name__)
 
 @auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
+    # 1. Redirect if already logged in
     if current_user.is_authenticated:
         if current_user.role == 'instructor':
             return redirect(url_for('instructor.dashboard'))
         elif current_user.role == 'admin':
             return redirect(url_for('admin.dashboard'))
-        else:
-            return redirect(url_for('student.scan'))
+        return redirect(url_for('student.scan'))
     
     form = RegistrationForm()
     
-    # Populate batch choices dynamically
-    active_batches = Batch.query.filter_by(is_active=True).all()
-    form.batch.choices = [(b.id, b.name) for b in active_batches]
+    # 2. Populate batch choices dynamically
+    try:
+        active_batches = Batch.query.filter_by(is_active=True).all()
+        form.batch.choices = [(b.id, b.name) for b in active_batches]
+    except Exception as e:
+        logger.error(f"Error fetching active batches: {e}")
+        flash("System error loading registration. Please try again later.", "error")
+        return redirect(url_for('auth.login'))
     
     if form.validate_on_submit():
-        # Get form data
-        name = form.name.data.strip()
-        email = form.email.data.strip()
+        # Clean and normalize input data
+        name_input = form.name.data.strip()
+        email_input = form.email.data.strip().lower()
         batch_id = form.batch.data
-        level = form.level.data
+        level_input = form.level.data
         password = form.password.data
         
-        # Get selected batch
+        # 3. Fetch Batch details
         batch = Batch.query.get(batch_id)
         if not batch:
-            flash('Invalid batch selected', 'error')
+            logger.warning(f"Registration attempt for non-existent batch ID: {batch_id}")
+            flash('Invalid batch selected.', 'error')
             return redirect(url_for('auth.register'))
         
-        # VALIDATION 1: Find the approved record
+        # 4. VALIDATION: Find approved record by EMAIL
+        # This is the primary verification key.
         approved_record = ApprovedStudent.query.filter(
             ApprovedStudent.batch_id == batch_id,
-            db.func.lower(ApprovedStudent.name) == name.lower()
+            db.func.lower(ApprovedStudent.email) == email_input
         ).first()
         
         if not approved_record:
-            flash(f'Your name is not on the approved list for {batch.name}. Please contact admin.', 'error')
+            logger.info(f"Unauthorized registration attempt: {email_input} for batch {batch.name}")
+            flash(f'The email {email_input} is not on the approved list for {batch.name}. Please contact your administrator.', 'error')
             return redirect(url_for('auth.register'))
         
-        # VALIDATION 2: Check if this approved name has already been used to register
+        # 5. VALIDATION: Check if already registered
         if approved_record.is_registered:
-            flash(f'This name has already been used to register. If this is you, please login. Otherwise, contact admin.', 'error')
+            logger.info(f"Duplicate registration attempt for email: {email_input}")
+            flash('This account is already registered. Please log in.', 'info')
             return redirect(url_for('auth.login'))
         
-        # VALIDATION 3: Check if level matches batch's current level
-        if level != batch.current_level:
-            flash(f'{batch.name} is currently at {batch.current_level} level. Please select {batch.current_level}.', 'error')
+        # 6. VALIDATION: Level check
+        if level_input != batch.current_level:
+            logger.warning(f"Level mismatch: User {email_input} tried {level_input}, Batch is {batch.current_level}")
+            flash(f'Registration failed: {batch.name} is currently at {batch.current_level.capitalize()} level.', 'error')
             return redirect(url_for('auth.register'))
         
-        # VALIDATION 4: Check if email already registered
-        existing_user = User.query.filter_by(email=email).first()
+        # 7. VALIDATION: Global User table check (Safety net)
+        existing_user = User.query.filter_by(email=email_input).first()
         if existing_user:
-            flash('Email already registered. Please login.', 'error')
+            logger.error(f"Database Inconsistency: {email_input} is in User table but not marked as registered in ApprovedStudent.")
+            flash('Email already in use. Please login or contact support.', 'error')
             return redirect(url_for('auth.login'))
         
-        # CREATE NEW USER
-        user = User(
-            name=name,
-            email=email,
-            role='student',
-            level=level,
-            batch_id=batch_id
-        )
-        user.set_password(password)
-        
-        db.session.add(user)
-        db.session.flush()  # Get user.id before committing
-        
-        # UPDATE APPROVED STUDENT RECORD
-        approved_record.is_registered = True
-        approved_record.registered_user_id = user.id
-        approved_record.registered_at = datetime.utcnow()
-        if not approved_record.email:
-            approved_record.email = email
-        
-        db.session.commit()
-        append_student_to_sheet(user)
-        
-        flash(f'Registration successful! Welcome to {batch.name} - {level.capitalize()}', 'success')
-        return redirect(url_for('auth.login'))
+        try:
+            # 8. CREATE NEW USER
+            # Use the 'approved_record.name' (Admin spelling) for consistency in reports
+            user = User(
+                name=approved_record.name, 
+                email=email_input,
+                role='student',
+                level=level_input,
+                batch_id=batch_id
+            )
+            user.set_password(password)
+            
+            db.session.add(user)
+            db.session.flush() # Get user.id for the approved_record link
+            
+            # 9. UPDATE APPROVED STUDENT RECORD
+            approved_record.is_registered = True
+            approved_record.registered_user_id = user.id
+            approved_record.registered_at = datetime.utcnow()
+            
+            db.session.commit()
+            logger.info(f"Successfully registered new student: {user.email} (ID: {user.id})")
+            
+            # 10. GOOGLE SHEETS SYNC
+            try:
+                append_student_to_sheet(user)
+            except Exception as sheet_err:
+                # Log but don't stop the user's registration progress
+                logger.error(f"Google Sheets Sync Failed for {user.email}: {sheet_err}")
+
+            flash(f'Registration successful! Welcome to {batch.name}, {user.name}.', 'success')
+            return redirect(url_for('auth.login'))
+
+        except Exception as db_err:
+            db.session.rollback()
+            logger.critical(f"Database crash during registration for {email_input}: {db_err}")
+            flash("A critical error occurred. Please try again or contact support.", "error")
+            return redirect(url_for('auth.register'))
     
     return render_template('auth/register.html', form=form, batches=active_batches)
-
 
 # LOGIN ROUTE
 @auth_bp.route('/login', methods=['GET', 'POST'])

@@ -3,173 +3,223 @@
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
     <!-- Header -->
     <div class="mb-8">
-        <a href="{{ url_for('admin.view_batch', batch_id=batch.id) }}" class="text-indigo-600 hover:text-indigo-800 flex items-center mb-4">
+        <a href="{{ url_for('admin.view_batch', batch_id=batch.id) }}"
+           class="text-indigo-600 hover:text-indigo-800 flex items-center mb-4">
             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
             </svg>
             Back to Batch Details
         </a>
-        
-        <div class="flex justify-between items-start">
-            <div>
-                <h1 class="text-3xl font-bold text-gray-900">Manage Approved Student List</h1>
-                <p class="text-gray-600 mt-1">{{ batch.name }} - {{ batch.current_level|capitalize }}</p>
-            </div>
+
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">Manage Approved Student List</h1>
+            <p class="text-gray-600 mt-1">{{ batch.name }} - {{ batch.current_level|capitalize }}</p>
         </div>
     </div>
 
-    <!-- Add Students Section -->
+    <!-- Add Students -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        <!-- Add Single Student -->
+
+        <!-- Single -->
         <div class="bg-white rounded-lg shadow p-6">
-            <h2 class="text-xl font-semibold text-gray-900 mb-4">Add Single Student</h2>
+            <h2 class="text-xl font-semibold mb-4">Add Single Student</h2>
+
             <form method="POST" action="{{ url_for('admin.add_approved_student', batch_id=batch.id) }}">
                 <div class="mb-4">
-                    <label for="name" class="block text-sm font-medium text-gray-700 mb-2">
+                    <label class="block text-sm font-medium mb-2">
                         Student Name <span class="text-red-500">*</span>
                     </label>
-                    <input type="text" id="name" name="name" required
-                           placeholder="e.g., John Doe"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                    <input type="text" name="name" required
+                        placeholder="e.g., John Doe"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
                 </div>
+
                 <div class="mb-4">
-                    <label for="email" class="block text-sm font-medium text-gray-700 mb-2">
-                        Expected Email (Optional)
+                    <label class="block text-sm font-medium mb-2">
+                        Student Email <span class="text-red-500">*</span>
                     </label>
-                    <input type="email" id="email" name="email"
-                           placeholder="e.g., john@example.com"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-                    <p class="text-sm text-gray-500 mt-1">Optional: for verification during registration</p>
+                    <input type="email" name="email" required
+                        placeholder="e.g., john@example.com"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                    <p class="text-sm text-gray-500 mt-1">
+                        Required: Used to verify identity during registration.
+                    </p>
                 </div>
-                <button type="submit" class="w-full px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition">
+
+                <button class="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700">
                     Add Student
                 </button>
             </form>
         </div>
 
-        <!-- Bulk Upload -->
+        <!-- Bulk -->
         <div class="bg-white rounded-lg shadow p-6">
-            <h2 class="text-xl font-semibold text-gray-900 mb-4">Bulk Upload Students</h2>
+            <h2 class="text-xl font-semibold mb-4">Bulk Upload Students</h2>
+
             <form method="POST" action="{{ url_for('admin.bulk_upload_students', batch_id=batch.id) }}">
-                <div class="mb-4">
-                    <label for="student_names" class="block text-sm font-medium text-gray-700 mb-2">
-                        Student Names <span class="text-red-500">*</span>
-                    </label>
-                    <textarea id="student_names" name="student_names" required rows="8"
-                              placeholder="Enter one name per line&#10;John Doe&#10;Jane Smith&#10;Bob Johnson"
-                              class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-sm"></textarea>
-                    <p class="text-sm text-gray-500 mt-1">One name per line. Duplicates will be skipped.</p>
-                </div>
-                <button type="submit" class="w-full px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition">
-                    Upload All Names
+                <textarea name="student_data" rows="8" required
+                    placeholder="John Doe, john@example.com&#10;Jane Smith, jane@example.com"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg font-mono text-sm"></textarea>
+
+                <p class="text-sm text-gray-500 mt-1">
+                    Format: <b>Name, Email</b> (one per line). Both name and email are <b>strictly required</b>.
+                </p>
+
+                <button class="w-full mt-4 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700">
+                    Upload Students
                 </button>
             </form>
         </div>
     </div>
 
-    <!-- Approved Students List -->
+    <!-- Table -->
     <div class="bg-white rounded-lg shadow">
-        <div class="px-6 py-4 border-b border-gray-200">
-            <div class="flex justify-between items-center">
-                <h2 class="text-xl font-semibold text-gray-900">Approved Student List</h2>
-                <span class="text-sm text-gray-600">
-                    {{ approved_students|length }} student(s)
-                </span>
-            </div>
+        <div class="px-6 py-4 border-b flex justify-between">
+            <h2 class="text-xl font-semibold">Approved Student List</h2>
+            <span class="text-sm text-gray-600">{{ approved_students|length }} student(s)</span>
         </div>
-        
+
         <div class="p-6">
-            {% if approved_students %}
+        {% if approved_students %}
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
+
                     <thead class="bg-gray-50">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expected Email</th>
-                            <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Registered As</th>
-                            <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Approved Email</th>
+                            <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Registered As</th>
+                            <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
                         </tr>
                     </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
-                        {% for approved, registered_email, registered_name in approved_students %}
+
+                    <tbody class="divide-y divide-gray-200">
+                    {% for approved, registered_email, registered_name in approved_students %}
                         <tr class="hover:bg-gray-50 {% if approved.is_registered %}bg-green-50{% endif %}">
-                            <td class="px-6 py-4 whitespace-nowrap">
+
+                            <!-- Name -->
+                            <td class="px-6 py-4">
                                 <div class="text-sm font-medium text-gray-900">{{ approved.name }}</div>
-                                <div class="text-xs text-gray-500">Added {{ approved.added_at.strftime('%Y-%m-%d') if approved.added_at else 'N/A' }}</div>
+                                <div class="text-xs text-gray-500">
+                                    Added {{ approved.added_at.strftime('%Y-%m-%d') if approved.added_at else 'N/A' }}
+                                </div>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {{ approved.email or '-' }}
+
+                            <!-- Email -->
+                            <td class="px-6 py-4 text-sm text-gray-500 font-mono">
+                                {{ approved.email }}
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-center">
+
+                            <!-- Status -->
+                            <td class="px-6 py-4 text-center">
                                 {% if approved.is_registered %}
-                                <span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                                    ✓ Registered
-                                </span>
+                                    <span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                                        ✓ Registered
+                                    </span>
                                 {% else %}
-                                <span class="px-3 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                                    Pending
-                                </span>
+                                    <span class="px-3 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                                        Pending
+                                    </span>
                                 {% endif %}
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+
+                            <!-- Registered As -->
+                            <td class="px-6 py-4 text-sm text-gray-500">
                                 {% if approved.is_registered %}
-                                {{ registered_email or 'N/A' }}
+                                    <div>{{ registered_email }}</div>
+                                    <div class="text-xs text-gray-400 italic">
+                                        Name used: {{ registered_name }}
+                                    </div>
                                 {% else %}
-                                -
+                                    <span class="text-gray-300">Not yet registered</span>
                                 {% endif %}
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-center">
+
+                            <!-- Actions -->
+                            <td class="px-6 py-4 text-center">
                                 {% if not approved.is_registered %}
-                                <form method="POST" action="{{ url_for('admin.delete_approved_student', id=approved.id) }}" onsubmit="return confirm('Remove {{ approved.name }} from approved list?');" class="inline">
-                                    <button type="submit" class="text-red-600 hover:text-red-900" title="Remove">
+                                    <button type="button"
+                                        onclick="openApprovedDeleteModal({{ approved.id }}, '{{ approved.name }}')"
+                                        class="text-red-600 hover:text-red-900"
+                                        title="Remove">
+
                                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                                         </svg>
                                     </button>
-                                </form>
                                 {% else %}
-                                <span class="text-gray-400 text-xs">Can't remove</span>
+                                    <div class="flex justify-center">
+                                        <span class="text-green-600" title="Locked">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                                            </svg>
+                                        </span>
+                                    </div>
                                 {% endif %}
                             </td>
+
                         </tr>
-                        {% endfor %}
+                    {% endfor %}
                     </tbody>
                 </table>
             </div>
 
-            <!-- Summary Stats -->
-            <div class="mt-6 grid grid-cols-3 gap-4 pt-6 border-t border-gray-200">
-                <div class="text-center">
-                    <p class="text-2xl font-bold text-gray-900">{{ approved_students|length }}</p>
-                    <p class="text-sm text-gray-600">Total Approved</p>
-                </div>
-                <div class="text-center">
-                    <p class="text-2xl font-bold text-green-600">
-                        {{ approved_students|selectattr('0.is_registered')|list|length }}
-                    </p>
-                    <p class="text-sm text-gray-600">Registered</p>
-                </div>
-                <div class="text-center">
-                    <p class="text-2xl font-bold text-yellow-600">
-                        {{ approved_students|rejectattr('0.is_registered')|list|length }}
-                    </p>
-                    <p class="text-sm text-gray-600">Pending</p>
-                </div>
+        {% else %}
+            <div class="text-center py-12 text-gray-500">
+                No approved students yet
             </div>
-
-            {% else %}
-            <div class="text-center py-12">
-                <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                </svg>
-                <h3 class="text-lg font-medium text-gray-900 mb-2">No approved students yet</h3>
-                <p class="text-gray-600">Use the forms above to add student names to the approved list</p>
-            </div>
-            {% endif %}
+        {% endif %}
         </div>
     </div>
 </div>
+
+<!-- DELETE MODAL -->
+<div id="deleteApprovedStudentModal"
+     class="modal-backdrop fixed inset-0 hidden items-center justify-center bg-black/50 backdrop-blur-sm">
+
+    <div id="deleteApprovedStudentModalCard"
+         class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4
+                transform transition-all duration-200 scale-95 opacity-0 p-6">
+
+        <h3 class="text-lg font-semibold text-gray-900 mb-2">
+            Remove <span id="deleteApprovedStudentName" class="text-red-700">"..."</span>?
+        </h3>
+
+        <p class="text-sm text-gray-500 mb-6">
+            This will remove the student from the approved list. They won’t be able to register unless added again.
+        </p>
+
+        <div class="flex gap-3">
+            <button onclick="closeModal('deleteApprovedStudentModal')"
+                class="flex-1 bg-gray-100 py-2 rounded-lg">
+                Cancel
+            </button>
+
+            <form id="deleteApprovedStudentForm" method="POST" action="" class="flex-1">
+                <button class="w-full bg-red-600 text-white py-2 rounded-lg">
+                    Yes, Remove
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function openApprovedDeleteModal(studentId, studentName) {
+    document.getElementById('deleteApprovedStudentName').textContent = '"' + studentName + '"';
+
+    document.getElementById('deleteApprovedStudentForm').action =
+        "{{ url_for('admin.delete_approved_student', id=0) }}".replace('0', studentId);
+
+    openModal('deleteApprovedStudentModal');
+}
+</script>
+
 {% endblock %}

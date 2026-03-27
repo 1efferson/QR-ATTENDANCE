@@ -20,6 +20,10 @@ from datetime import datetime, timedelta
 from app.sheets_sync import create_sheet_tab, append_student_to_sheet
 import threading
 from . import admin_bp
+import logging
+
+# Initialize logger for this module
+logger = logging.getLogger(__name__)
 
 
 def admin_required(f):
@@ -341,28 +345,51 @@ def promote_batch(batch_id):
 
     return redirect(url_for('admin.view_batch', batch_id=batch_id))
 
-@admin_bp.route('/batches/<int:batch_id>/delete', methods=['POST'])
+# --- DEACTIVATE (Soft Delete) ---
+@admin_bp.route('/batches/<int:batch_id>/deactivate', methods=['POST'])
 @admin_required
-def delete_batch(batch_id):
-    """
-    Deactivate batch
-    Bulk update at database level
-    """
+def deactivate_batch(batch_id):
+    """Hide batch from active views but keep data for records/history."""
     batch = Batch.query.get_or_404(batch_id)
-    
-    # Deactivate instead of delete
     batch.is_active = False
     
-    # Unassign all students - BULK UPDATE at database level
-    db.session.query(User).filter(
-        User.batch_id == batch_id
-    ).update(
-        {User.batch_id: None},
-        synchronize_session=False
+    # Optional: Unassign students so they can join new batches
+    db.session.query(User).filter(User.batch_id == batch_id).update(
+        {User.batch_id: None}, synchronize_session=False
     )
     
     db.session.commit()
-    flash(f'Batch "{batch.name}" deactivated and students unassigned', 'success')
+    logger.info(f"Batch {batch.name} deactivated by {current_user.email}")
+    flash(f'Batch "{batch.name}" is now inactive.', 'info')
+    return redirect(url_for('admin.batches'))
+
+# --- CASCADE DELETE (Hard Delete) ---
+@admin_bp.route('/batches/<int:batch_id>/delete-permanent', methods=['POST'])
+@admin_required
+def permanent_delete_batch(batch_id):
+    """The Wipes everything related to the batch."""
+    batch = Batch.query.get_or_404(batch_id)
+    name = batch.name
+    
+    try:
+        # 1. Clear Schedule
+        BatchSchedule.query.filter_by(batch_id=batch_id).delete()
+        # 2. Clear Approved List
+        ApprovedStudent.query.filter_by(batch_id=batch_id).delete()
+        # 3. Clear Attendance Records (Critical for a clean wipe)
+        attendance_ids = db.session.query(Attendance.id).join(User).filter(User.batch_id == batch_id).all()
+        Attendance.query.filter(Attendance.id.in_([a[0] for a in attendance_ids])).delete(synchronize_session=False)
+        
+        db.session.delete(batch)
+        db.session.commit()
+        
+        logger.warning(f"PERMANENT DELETE: Batch {name} wiped by {current_user.email}")
+        flash(f'Batch "{name}" and all history permanently deleted.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Failed to wipe batch {batch_id}: {e}")
+        flash("Error during permanent deletion.", "error")
+        
     return redirect(url_for('admin.batches'))
 
 
@@ -401,91 +428,117 @@ def manage_approved_students(batch_id):
 @admin_bp.route('/batches/<int:batch_id>/students/add', methods=['POST'])
 @admin_required
 def add_approved_student(batch_id):
-    """Add single student to approved list"""
+    """Add a single student to the approved list with required email verification."""
     batch = Batch.query.get_or_404(batch_id)
     
+    # 1. Capture and Clean Input
     name = request.form.get('name', '').strip()
-    email = request.form.get('email', '').strip()
+    email = request.form.get('email', '').strip().lower() # Normalize to lowercase
     
-    if not name:
-        flash('Student name is required', 'error')
+    # 2. Strict Validation: Both fields are now mandatory
+    if not name or not email:
+        logger.warning(f"Admin {current_user.email} attempted to add student with missing fields.")
+        flash('Both Student Name and Email are strictly required.', 'error')
         return redirect(url_for('admin.manage_approved_students', batch_id=batch_id))
     
-    # Check if already exists - database level
-    existing_count = db.session.query(func.count(ApprovedStudent.id)).filter(
-        ApprovedStudent.batch_id == batch_id,
-        func.lower(ApprovedStudent.name) == name.lower()
-    ).scalar()
+    try:
+        # 3. Duplicate Check: Check by EMAIL (The unique identifier)
+        existing_student = ApprovedStudent.query.filter(
+            ApprovedStudent.batch_id == batch_id,
+            db.func.lower(ApprovedStudent.email) == email
+        ).first()
+        
+        if existing_student:
+            logger.info(f"Duplicate entry blocked: Email {email} already in Batch {batch.id}")
+            flash(f'The email "{email}" is already on the approved list for this batch.', 'warning')
+            return redirect(url_for('admin.manage_approved_students', batch_id=batch_id))
+        
+        # 4. Add to approved list
+        # We save 'name' as provided (Title Case usually) but email as lowercase
+        approved = ApprovedStudent(
+            batch_id=batch_id,
+            name=name,
+            email=email
+        )
+        
+        db.session.add(approved)
+        db.session.commit()
+        
+        logger.info(f"Admin {current_user.email} added {email} to {batch.name} approved list.")
+        flash(f'✓ {name} ({email}) added to approved list for {batch.name}.', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error adding single student {email}: {e}")
+        flash("A database error occurred. Please try again.", "error")
     
-    if existing_count > 0:
-        flash(f'{name} is already on the approved list', 'warning')
-        return redirect(url_for('admin.manage_approved_students', batch_id=batch_id))
-    
-    # Add to approved list
-    approved = ApprovedStudent(
-        batch_id=batch_id,
-        name=name,
-        email=email if email else None
-    )
-    
-    db.session.add(approved)
-    db.session.commit()
-    
-    flash(f'{name} added to approved list for {batch.name}', 'success')
     return redirect(url_for('admin.manage_approved_students', batch_id=batch_id))
 
 
 @admin_bp.route('/batches/<int:batch_id>/students/bulk-upload', methods=['POST'])
 @admin_required
 def bulk_upload_students(batch_id):
-    """
-    Bulk upload students (one name per line)
-    Batch insert with database-level duplicate checking
-    """
     batch = Batch.query.get_or_404(batch_id)
     
-    student_names = request.form.get('student_names', '')
+    student_data = request.form.get('student_data', '')
     
-    if not student_names:
-        flash('Please enter student names', 'error')
+    if not student_data:
+        flash('Please enter student details', 'error')
         return redirect(url_for('admin.manage_approved_students', batch_id=batch_id))
     
-    # Parse names (one per line)
-    names = [line.strip() for line in student_names.split('\n') if line.strip()]
-    
-    # Get existing names in one query - database level
-    existing_names = db.session.query(
-        func.lower(ApprovedStudent.name)
-    ).filter(
-        ApprovedStudent.batch_id == batch_id
+    # Get existing emails in this batch to prevent duplicates
+    existing_emails = db.session.query(ApprovedStudent.email).filter(
+        ApprovedStudent.batch_id == batch_id,
+        ApprovedStudent.email.isnot(None)
     ).all()
+    existing_emails_set = {email[0].lower() for email in existing_emails}
     
-    existing_names_set = {name[0] for name in existing_names}
-    
-    # Prepare batch insert
     new_students = []
     skipped_count = 0
+    invalid_count = 0  # Track lines that failed the Name, Email format
     
-    for name in names:
-        if name.lower() in existing_names_set:
+    # Process each line
+    lines = student_data.strip().split('\n')
+    for line in lines:
+        if not line.strip():
+            continue
+            
+        # Split by comma
+        parts = [p.strip() for p in line.split(',')]
+        
+        # ENFORCEMENT: Ensure both Name AND Email are provided
+        if len(parts) < 2 or not parts[0] or not parts[1]:
+            invalid_count += 1
+            continue
+            
+        name = parts[0]
+        email = parts[1]
+        
+        # Validation: Check if email already exists in this batch
+        if email.lower() in existing_emails_set:
             skipped_count += 1
             continue
-        
+            
         new_students.append(ApprovedStudent(
             batch_id=batch_id,
-            name=name
+            name=name,
+            email=email
         ))
     
-    # Bulk insert - single database operation
+    # Bulk insert
     if new_students:
         db.session.bulk_save_objects(new_students)
         db.session.commit()
     
-    added_count = len(new_students)
-    
-    flash(f'✓ Added {added_count} students. Skipped {skipped_count} duplicates.', 'success')
+    # Construct feedback message
+    message = f'✓ Added {len(new_students)} students.'
+    if skipped_count > 0:
+        message += f' Skipped {skipped_count} duplicates.'
+    if invalid_count > 0:
+        message += f' Skipped {invalid_count} invalid lines (missing email).'
+        
+    flash(message, 'success' if len(new_students) > 0 else 'warning')
     return redirect(url_for('admin.manage_approved_students', batch_id=batch_id))
-
 
 @admin_bp.route('/approved-students/<int:id>/delete', methods=['POST'])
 @admin_required
@@ -505,6 +558,54 @@ def delete_approved_student(id):
     
     flash(f'{name} removed from approved list', 'success')
     return redirect(url_for('admin.manage_approved_students', batch_id=batch_id))
+
+# --- UNASSIGN (Soft Removal) ---
+@admin_bp.route('/students/<int:user_id>/unassign', methods=['POST'])
+@admin_required
+def unassign_student(user_id):
+    """Remove a student from their batch but keep their account and attendance history."""
+    student = User.query.filter_by(id=user_id, role='student').first_or_404()
+    old_batch_name = student.batch.name if student.batch else "Unassigned"
+    
+    student.batch_id = None
+    student.level = None
+    db.session.commit()
+    
+    logger.info(f"Admin {current_user.email} unassigned {student.email} from {old_batch_name}")
+    flash(f'Student {student.name} has been unassigned and is now in the "Unassigned" pool.', 'info')
+    return redirect(request.referrer or url_for('admin.students'))
+
+# --- PERMANENT DELETE (Hard Removal) ---
+@admin_bp.route('/students/<int:user_id>/delete-permanent', methods=['POST'])
+@admin_required
+def permanent_delete_student(user_id):
+    """The Nuclear Option: Wipes the User, their Attendance, and resets their Approval status."""
+    student = User.query.filter_by(id=user_id, role='student').first_or_404()
+    email = student.email
+    
+    try:
+        # 1. Delete Attendance records
+        Attendance.query.filter_by(user_id=user_id).delete()
+        
+        # 2. Reset the ApprovedStudent record so they can register again if needed
+        approved = ApprovedStudent.query.filter_by(registered_user_id=user_id).first()
+        if approved:
+            approved.is_registered = False
+            approved.registered_user_id = None
+            approved.registered_at = None
+        
+        # 3. Delete the User record
+        db.session.delete(student)
+        db.session.commit()
+        
+        logger.warning(f"PERMANENT DELETE: User {email} wiped by {current_user.email}")
+        flash(f'User account for {email} and all attendance history has been permanently deleted.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Failed to delete student {user_id}: {e}")
+        flash("Error during permanent deletion of student.", "error")
+        
+    return redirect(url_for('admin.students'))
 
 
 # ============================================================================
