@@ -345,28 +345,51 @@ def promote_batch(batch_id):
 
     return redirect(url_for('admin.view_batch', batch_id=batch_id))
 
-@admin_bp.route('/batches/<int:batch_id>/delete', methods=['POST'])
+# --- DEACTIVATE (Soft Delete) ---
+@admin_bp.route('/batches/<int:batch_id>/deactivate', methods=['POST'])
 @admin_required
-def delete_batch(batch_id):
-    """
-    Deactivate batch
-    Bulk update at database level
-    """
+def deactivate_batch(batch_id):
+    """Hide batch from active views but keep data for records/history."""
     batch = Batch.query.get_or_404(batch_id)
-    
-    # Deactivate instead of delete
     batch.is_active = False
     
-    # Unassign all students - BULK UPDATE at database level
-    db.session.query(User).filter(
-        User.batch_id == batch_id
-    ).update(
-        {User.batch_id: None},
-        synchronize_session=False
+    # Optional: Unassign students so they can join new batches
+    db.session.query(User).filter(User.batch_id == batch_id).update(
+        {User.batch_id: None}, synchronize_session=False
     )
     
     db.session.commit()
-    flash(f'Batch "{batch.name}" deactivated and students unassigned', 'success')
+    logger.info(f"Batch {batch.name} deactivated by {current_user.email}")
+    flash(f'Batch "{batch.name}" is now inactive.', 'info')
+    return redirect(url_for('admin.batches'))
+
+# --- CASCADE DELETE (Hard Delete) ---
+@admin_bp.route('/batches/<int:batch_id>/delete-permanent', methods=['POST'])
+@admin_required
+def permanent_delete_batch(batch_id):
+    """The Wipes everything related to the batch."""
+    batch = Batch.query.get_or_404(batch_id)
+    name = batch.name
+    
+    try:
+        # 1. Clear Schedule
+        BatchSchedule.query.filter_by(batch_id=batch_id).delete()
+        # 2. Clear Approved List
+        ApprovedStudent.query.filter_by(batch_id=batch_id).delete()
+        # 3. Clear Attendance Records (Critical for a clean wipe)
+        attendance_ids = db.session.query(Attendance.id).join(User).filter(User.batch_id == batch_id).all()
+        Attendance.query.filter(Attendance.id.in_([a[0] for a in attendance_ids])).delete(synchronize_session=False)
+        
+        db.session.delete(batch)
+        db.session.commit()
+        
+        logger.warning(f"PERMANENT DELETE: Batch {name} wiped by {current_user.email}")
+        flash(f'Batch "{name}" and all history permanently deleted.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Failed to wipe batch {batch_id}: {e}")
+        flash("Error during permanent deletion.", "error")
+        
     return redirect(url_for('admin.batches'))
 
 
@@ -535,6 +558,54 @@ def delete_approved_student(id):
     
     flash(f'{name} removed from approved list', 'success')
     return redirect(url_for('admin.manage_approved_students', batch_id=batch_id))
+
+# --- UNASSIGN (Soft Removal) ---
+@admin_bp.route('/students/<int:user_id>/unassign', methods=['POST'])
+@admin_required
+def unassign_student(user_id):
+    """Remove a student from their batch but keep their account and attendance history."""
+    student = User.query.filter_by(id=user_id, role='student').first_or_404()
+    old_batch_name = student.batch.name if student.batch else "Unassigned"
+    
+    student.batch_id = None
+    student.level = None
+    db.session.commit()
+    
+    logger.info(f"Admin {current_user.email} unassigned {student.email} from {old_batch_name}")
+    flash(f'Student {student.name} has been unassigned and is now in the "Unassigned" pool.', 'info')
+    return redirect(request.referrer or url_for('admin.students'))
+
+# --- PERMANENT DELETE (Hard Removal) ---
+@admin_bp.route('/students/<int:user_id>/delete-permanent', methods=['POST'])
+@admin_required
+def permanent_delete_student(user_id):
+    """The Nuclear Option: Wipes the User, their Attendance, and resets their Approval status."""
+    student = User.query.filter_by(id=user_id, role='student').first_or_404()
+    email = student.email
+    
+    try:
+        # 1. Delete Attendance records
+        Attendance.query.filter_by(user_id=user_id).delete()
+        
+        # 2. Reset the ApprovedStudent record so they can register again if needed
+        approved = ApprovedStudent.query.filter_by(registered_user_id=user_id).first()
+        if approved:
+            approved.is_registered = False
+            approved.registered_user_id = None
+            approved.registered_at = None
+        
+        # 3. Delete the User record
+        db.session.delete(student)
+        db.session.commit()
+        
+        logger.warning(f"PERMANENT DELETE: User {email} wiped by {current_user.email}")
+        flash(f'User account for {email} and all attendance history has been permanently deleted.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Failed to delete student {user_id}: {e}")
+        flash("Error during permanent deletion of student.", "error")
+        
+    return redirect(url_for('admin.students'))
 
 
 # ============================================================================
