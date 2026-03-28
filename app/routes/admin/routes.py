@@ -21,6 +21,7 @@ from app.sheets_sync import create_sheet_tab, append_student_to_sheet
 import threading
 from . import admin_bp
 import logging
+from flask import current_app
 
 # Initialize logger for this module
 logger = logging.getLogger(__name__)
@@ -325,23 +326,69 @@ def promote_batch(batch_id):
 
         db.session.commit()
 
-        # ── Fire sheet tab creation + student seeding in background ───────
+        # 1. Get the app object to pass into the thread
+        app = current_app._get_current_object()
         
+        # 2. Get students before the thread starts
         students = User.query.filter_by(batch_id=batch_id, role='student').all()
 
-        def sync_promotion():
-            create_sheet_tab(batch)
-            for student in students:
-                append_student_to_sheet(student)
+        def sync_promotion(app_context, batch_id):
+            # 3. Open the "Map" (App Context) so the thread can see the DB
+            with app_context.app_context():
+                # Re-fetch the batch inside the thread context
+                t_batch = Batch.query.get(batch_id)
+                t_students = User.query.filter_by(batch_id=batch_id, role='student').all()
+                
+                try:
+                    create_sheet_tab(t_batch)
+                    for student in t_students:
+                        append_student_to_sheet(student)
+                except Exception as e:
+                    print(f"Google Sheets Sync Error: {e}")
 
-        thread = threading.Thread(target=sync_promotion, daemon=True)
+        # Start the thread and pass the app object and batch ID
+        thread = threading.Thread(target=sync_promotion, args=(app, batch.id), daemon=True)
         thread.start()
-        # ──────────────────────────────────────────────────────────────────
 
-        flash(f'✓ Batch "{batch.name}" promoted from {old_level} to {new_level}! '
-              f'{student_count} students updated.', 'success')
+        flash(f'✓ Batch "{batch.name}" promoted to {new_level}!', 'success')
     else:
-        flash(f'Batch "{batch.name}" is already at {batch.current_level} level', 'warning')
+        flash(f'Batch already at {batch.current_level} level', 'warning')
+
+    return redirect(url_for('admin.view_batch', batch_id=batch_id))
+
+
+@admin_bp.route('/batches/<int:batch_id>/unpromote', methods=['POST'])
+@admin_required
+def unpromote_batch(batch_id):
+    batch = Batch.query.get_or_404(batch_id)
+    old_level = batch.current_level
+    
+    demotion_map = {'advanced': 'intermediate', 'intermediate': 'beginner'}
+    new_level = demotion_map.get(old_level)
+    
+    if not new_level:
+        flash(f'Cannot unpromote "{batch.name}" from {old_level}.', 'warning')
+        return redirect(url_for('admin.view_batch', batch_id=batch_id))
+
+    try:
+        # BULK UPDATE - Fast for 1000+ users
+        db.session.query(User).filter(
+            User.batch_id == batch_id, 
+            User.role == 'student'
+        ).update({'level': new_level}, synchronize_session=False)
+        
+        batch.current_level = new_level
+        db.session.commit()
+        
+        # Simple logging for the Admin
+        print(f"LOG: Batch {batch.name} was unpromoted to {new_level}. "
+              f"Manual cleanup of Google Sheet tab '{batch.name} - {old_level.capitalize()}' required.")
+
+        flash(f'↺ "{batch.name}" reverted to {new_level}. Please manually delete the old tab in Google Sheets.', 'success')
+              
+    except Exception as e:
+        db.session.rollback()
+        flash('An error occurred during unpromotion.', 'error')
 
     return redirect(url_for('admin.view_batch', batch_id=batch_id))
 
