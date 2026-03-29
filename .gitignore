@@ -35,3 +35,6 @@ admin_status.py
 # gsheets
 credentials.json
 seed_sheets.py
+
+# node modules
+node_modules
