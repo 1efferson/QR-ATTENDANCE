@@ -22,7 +22,7 @@ class Batch(db.Model):
     id              = db.Column(db.Integer, primary_key=True)
     name            = db.Column(db.String(100), unique=True, nullable=False)
     description     = db.Column(db.Text, nullable=True)
-    current_level   = db.Column(db.String(50), default='beginner')  # beginner, intermediate, advanced
+    current_level   = db.Column(db.String(50), default='beginner')  # beginner, intermediate, advanced, alumni
     is_active       = db.Column(db.Boolean, default=True)
     created_at      = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -71,7 +71,8 @@ class Batch(db.Model):
         level_progression = {
             'beginner':     'intermediate',
             'intermediate': 'advanced',
-            'advanced':     'advanced'  # Stays at advanced
+            'advanced':     'alumni',
+            'alumni':       'alumni'
         }
         next_level = level_progression.get(self.current_level)
         if next_level and next_level != self.current_level:
