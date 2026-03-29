@@ -333,18 +333,27 @@ def promote_batch(batch_id):
         students = User.query.filter_by(batch_id=batch_id, role='student').all()
 
         def sync_promotion(app_context, batch_id):
-            # 3. Open the "Map" (App Context) so the thread can see the DB
+            # Use the logger defined at the top of your routes.py
             with app_context.app_context():
                 # Re-fetch the batch inside the thread context
                 t_batch = Batch.query.get(batch_id)
+                if not t_batch:
+                    logger.error(f"Sync Thread Error: Batch ID {batch_id} not found.")
+                    return
+
                 t_students = User.query.filter_by(batch_id=batch_id, role='student').all()
                 
                 try:
                     create_sheet_tab(t_batch)
                     for student in t_students:
                         append_student_to_sheet(student)
-                except Exception as e:
-                    print(f"Google Sheets Sync Error: {e}")
+                    
+                    # Log success so you know the background task finished
+                    logger.info(f"SUCCESS: Google Sheets sync completed for Batch '{t_batch.name}'")
+
+                except Exception:
+                    # logger.exception automatically captures the Traceback/Stack Trace
+                    logger.exception(f"CRITICAL: Google Sheets Sync failed for Batch ID {batch_id}")
 
         # Start the thread and pass the app object and batch ID
         thread = threading.Thread(target=sync_promotion, args=(app, batch.id), daemon=True)
@@ -363,7 +372,7 @@ def unpromote_batch(batch_id):
     batch = Batch.query.get_or_404(batch_id)
     old_level = batch.current_level
     
-    demotion_map = {'advanced': 'intermediate', 'intermediate': 'beginner'}
+    demotion_map = {'alumni':'advanced','advanced':'intermediate','intermediate': 'beginner'}
     new_level = demotion_map.get(old_level)
     
     if not new_level:
@@ -371,7 +380,7 @@ def unpromote_batch(batch_id):
         return redirect(url_for('admin.view_batch', batch_id=batch_id))
 
     try:
-        # BULK UPDATE - Fast for 1000+ users
+        # BULK UPDATE
         db.session.query(User).filter(
             User.batch_id == batch_id, 
             User.role == 'student'
@@ -380,9 +389,11 @@ def unpromote_batch(batch_id):
         batch.current_level = new_level
         db.session.commit()
         
-        # Simple logging for the Admin
-        print(f"LOG: Batch {batch.name} was unpromoted to {new_level}. "
-              f"Manual cleanup of Google Sheet tab '{batch.name} - {old_level.capitalize()}' required.")
+        # logging for the Admin
+        logger.warning(
+            f"UNPROMOTE EVENT: Batch '{batch.name}' (ID: {batch_id}) reverted to {new_level}. "
+            f"Action Required: Manual cleanup of Google Sheet tab '{batch.name} - {old_level.capitalize()}'."
+        )
 
         flash(f'↺ "{batch.name}" reverted to {new_level}. Please manually delete the old tab in Google Sheets.', 'success')
               
