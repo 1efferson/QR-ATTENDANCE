@@ -2,6 +2,8 @@ from datetime import datetime
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from app import db, login_manager
+from sqlalchemy import Index, text
+from datetime import datetime
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -190,6 +192,18 @@ class Attendance(db.Model):
     # Ensures attendance history stays separated by level even after promotion.
     # e.g. beginner scans won't count toward intermediate attendance %.
     student_level    = db.Column(db.String(50), nullable=True)
+
+    __table_args__ = (
+        # Using an Index with unique=True and text() safely enforces the daily 
+        # limit in PostgreSQL without triggering the "unnamed column" error.
+        Index(
+            'uix_user_level_date',
+            'user_id',
+            'student_level',
+            text("DATE(timestamp)"),
+            unique=True
+        ),
+    )
 
     def __repr__(self):
         pt = ' [P.T]' if self.is_personal_time else ''

@@ -17,6 +17,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import func, not_
 from sqlalchemy.dialects.postgresql import insert
+from datetime import date, datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -27,17 +28,21 @@ SHEET_BACKOFF = 5.0
 def _run_absence_sync():
     """
     Core logic for the 9 PM job.
-    Uses an Anti-Join subquery to identify absences at the DB level for maximum speed.
+    Optimized with index-friendly date ranges and true DB bulk inserts.
     """
     from app import db
     from app.models import Batch, User, Attendance, Absence
-    from app.sheets_sync import mark_batch_absences, _worksheet_name
+    from app.sheets_sync import sync_daily_attendance, _worksheet_name # Note the changed sync function
     from gspread.exceptions import APIError
 
     today = date.today()
     today_weekday = today.weekday()
+    
+    # Calculate datetime boundaries for index-friendly querying
+    today_start = datetime.combine(today, datetime.min.time())
+    tomorrow_start = today_start + timedelta(days=1)
 
-    logger.info("=== Absence sync started for %s ===", today)
+    logger.info("=== Daily Sync started for %s ===", today)
 
     # 1. Find batches active today
     active_batches = Batch.query.filter_by(is_active=True).all()
@@ -53,50 +58,56 @@ def _run_absence_sync():
     for batch in batches_today:
         logger.info("Processing batch: '%s' [%s]", batch.name, batch.current_level)
 
-        # 2. Database-level Anti-Join: Find students who DID NOT scan today at this level
-        # This subquery finds the 'Present' students
+        # 2. Database-level Anti-Join (Optimized Date Range)
         present_subquery = db.session.query(Attendance.user_id).filter(
-            func.date(Attendance.timestamp) == today,
+            Attendance.timestamp >= today_start,
+            Attendance.timestamp < tomorrow_start,
             Attendance.is_personal_time == False,
             Attendance.student_level == batch.current_level
         ).subquery()
 
-        # This query finds students in the batch NOT in the 'Present' list
+        # Get Present Students (for Google Sheets Sync)
+        present_students = User.query.filter(
+            User.id.in_(present_subquery)
+        ).all()
+        present_names = [s.name for s in present_students]
+
+        # Get Absent Students
         absent_students = User.query.filter(
             User.batch_id == batch.id,
             User.role == 'student',
             not_(User.id.in_(present_subquery))
         ).all()
-
-        if not absent_students:
-            logger.info("All students in '%s' were present.", batch.name)
-            continue
-
         absent_names = [s.name for s in absent_students]
         
-        # 3. Atomic Batch Insert (PostgreSQL 'ON CONFLICT DO NOTHING')
-        # This is significantly faster than checking 'if exists' for every student
-        try:
-            for student in absent_students:
-                stmt = insert(Absence).values(
-                    user_id=student.id,
-                    batch_id=batch.id,
-                    date=today
-                ).on_conflict_do_nothing(index_elements=['user_id', 'date'])
+        # 3. True Atomic Bulk Insert for Absences
+        if absent_students:
+            try:
+                # Create a list of dictionaries for a single bulk insert
+                absence_data = [
+                    {'user_id': student.id, 'batch_id': batch.id, 'date': today} 
+                    for student in absent_students
+                ]
+                
+                stmt = insert(Absence).values(absence_data).on_conflict_do_nothing(
+                    index_elements=['user_id', 'date']
+                )
                 db.session.execute(stmt)
-            
-            db.session.commit()
-            logger.info("Recorded absences in DB for batch '%s'.", batch.name)
-        except Exception as e:
-            db.session.rollback()
-            logger.error("Failed to commit absences to DB for '%s': %s", batch.name, e)
+                db.session.commit()
+                logger.info("Bulk recorded %d absences in DB for batch '%s'.", len(absent_students), batch.name)
+            except Exception as e:
+                db.session.rollback()
+                logger.error("Failed to commit absences to DB for '%s': %s", batch.name, e)
 
-        # 4. Sync to Google Sheet with retry
+        # 4. Sync BOTH Presents and Absences to Google Sheet
         worksheet_name = _worksheet_name(batch)
         for attempt in range(1, SHEET_RETRIES + 1):
             try:
-                sync_result = mark_batch_absences(
-                    absent_student_names=absent_names,
+                # You will need to update your sheets_sync.py to accept both lists
+                # and do a single batch_update to the sheet.
+                sync_result = sync_daily_attendance(
+                    present_names=present_names,
+                    absent_names=absent_names,
                     worksheet_name=worksheet_name,
                 )
                 logger.info("Sheet sync '%s' success (Attempt %d).", batch.name, attempt)
