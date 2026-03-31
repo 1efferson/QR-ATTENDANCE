@@ -137,6 +137,14 @@ class ApprovedStudent(db.Model):
 
     __table_args__ = (
         db.UniqueConstraint('batch_id', 'name', name='unique_batch_student'),
+        Index(
+            "ix_approved_students_batch_lower_email",
+            "batch_id",
+            text("lower(email)"),   # PostgreSQL functional index
+            unique=True,
+        ),
+        # Speeds up "how many students are still unregistered?" admin queries
+        Index("ix_approved_students_registered", "is_registered"),
     )
 
     def __repr__(self):
@@ -153,14 +161,25 @@ class User(UserMixin, db.Model):
     email         = db.Column(db.String(120), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(256), nullable=False)
     name          = db.Column(db.String(100), nullable=False)
-    level         = db.Column(db.String(50), nullable=True)   # beginner, intermediate, advanced
-    role          = db.Column(db.String(20), default='student', nullable=False)  # student, instructor, admin
+    level         = db.Column(db.String(50), nullable=True)
+    role          = db.Column(db.String(20), default='student', nullable=False)
     created_at    = db.Column(db.DateTime, default=datetime.utcnow)
     batch_id      = db.Column(db.Integer, db.ForeignKey('batches.id', name='fk_user_batch_id'), nullable=True, index=True)
+
+    # Tracks whether this student has been pushed to Google Sheets.
+    # False = waiting for next batch sync. True = already in the sheet.
+    is_synced_to_sheets = db.Column(db.Boolean, default=False, nullable=False)
 
     # Relationships
     attendances = db.relationship('Attendance', backref='student', lazy=True)
     absences    = db.relationship('Absence', backref='student', lazy=True)
+
+    __table_args__ = (
+        Index("ix_users_email", "email", unique=True),
+        Index("ix_users_batch_role", "batch_id", "role"),
+        # Speeds up the periodic batch sync query
+        Index("ix_users_synced_to_sheets", "is_synced_to_sheets", "role"),
+    )
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -203,6 +222,10 @@ class Attendance(db.Model):
             text("DATE(timestamp)"),
             unique=True
         ),
+        # APScheduler absence sync uses timestamp range queries — this is essential
+        Index("ix_attendance_timestamp", "timestamp"),
+        # Combined filter: user_id + timestamp (used in present_subquery)
+        Index("ix_attendance_user_timestamp", "user_id", "timestamp"),
     )
 
     def __repr__(self):
