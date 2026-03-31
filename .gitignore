@@ -36,5 +36,11 @@ admin_status.py
 credentials.json
 seed_sheets.py
 
-# node modules
-node_modules
+# Celery
+celerybeat-schedule
+celerybeat-schedule-shm
+celerybeat-schedule-wal
+celerybeat.pid
+
+# Node
+node_modules/
