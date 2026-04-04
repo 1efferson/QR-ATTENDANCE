@@ -1,0 +1,66 @@
+/* ============================================================
+   student-mobile.css
+   Shared bottom bar styles for all student pages.
+   Loaded globally via base.html.
+   ============================================================ */
+
+/* ── Hide bottom bar by default on desktop + tablet ─────────
+   This MUST sit outside any media query so it applies
+   everywhere first, before the phone rule overrides it.
+   ──────────────────────────────────────────────────────────── */
+.bottom-bar { display: none; }
+
+
+/* ── Phone only (≤ 479px) ────────────────────────────────── */
+@media (max-width: 479px) {
+
+  /* ── iOS-style bottom navigation bar (light frosted glass) ── */
+  .bottom-bar {
+    display: flex;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    min-height: 56px;
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-top: 1px solid #e5e7eb;
+    align-items: center;
+    justify-content: space-around;
+    z-index: 100;
+  }
+
+  .bar-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 8px 16px;
+    border-radius: 10px;
+    text-decoration: none;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: #9ca3af;
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    -webkit-tap-highlight-color: transparent;
+    transition: color 0.12s;
+    min-width: 56px;
+  }
+
+  .bar-btn svg {
+    width: 22px; height: 22px;
+    fill: none; stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .bar-btn:active     { color: #6b7280; }
+  .bar-btn.active     { color: #6366f1; }
+  .bar-btn.active svg { stroke: #6366f1; }
+
+}
