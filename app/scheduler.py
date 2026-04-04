@@ -6,6 +6,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import not_
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import select, not_
 
 logger = logging.getLogger(__name__)
 
@@ -35,17 +36,17 @@ def _run_absence_sync():
     for batch in batches_today:
         logger.info("Processing batch: '%s' [%s]", batch.name, batch.current_level)
 
-        present_subquery = db.session.query(Attendance.user_id).filter(
+        present_stmt = db.session.query(Attendance.user_id).filter(
             Attendance.timestamp >= today_start,
             Attendance.timestamp < tomorrow_start,
             Attendance.is_personal_time == False,
             Attendance.student_level == batch.current_level,
-        ).subquery()
+        )
 
         absent_students = User.query.filter(
             User.batch_id == batch.id,
             User.role == 'student',
-            not_(User.id.in_(present_subquery)),
+            not_(User.id.in_(present_stmt)),
         ).all()
 
         if absent_students:

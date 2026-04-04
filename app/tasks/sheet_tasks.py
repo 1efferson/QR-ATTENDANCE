@@ -1,5 +1,7 @@
 import logging
 from app import celery
+from sqlalchemy import not_, select
+from datetime import date, datetime
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +17,7 @@ def _do_batch_sync_unsynced_students() -> dict:
     from app import db
     from app.models import User, Batch
     from app.sheets_sync import append_students_to_sheet_batch
+    
 
     active_batches = Batch.query.filter_by(is_active=True).all()
     total_synced = 0
@@ -72,21 +75,21 @@ def _do_batch_attendance_sync(batch_id: int, date_str: str) -> None:
     today_start = datetime.combine(today, datetime.min.time())
     tomorrow_start = datetime.combine(today, datetime.max.time())
 
-    present_subquery = db.session.query(Attendance.user_id).filter(
+    present_stmt = db.session.query(Attendance.user_id).filter(
         Attendance.timestamp >= today_start,
         Attendance.timestamp < tomorrow_start,
         Attendance.is_personal_time == False,
         Attendance.student_level == batch.current_level,
-    ).subquery()
+    )
 
     present_names = [
-        s.name for s in User.query.filter(User.id.in_(present_subquery)).all()
+        s.name for s in User.query.filter(User.id.in_(present_stmt)).all()
     ]
     absent_names = [
         s.name for s in User.query.filter(
             User.batch_id == batch.id,
             User.role == 'student',
-            not_(User.id.in_(present_subquery)),
+            not_(User.id.in_(present_stmt)),
         ).all()
     ]
 

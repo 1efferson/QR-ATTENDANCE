@@ -1,0 +1,24 @@
+/* ============================================================
+   history-mobile.css
+   Phone-only styles for the student attendance history page.
+   Activates at ≤ 479px — phones only, not tablets or desktop.
+   Place in: app/static/css/history-mobile.css
+   Link in:  templates/student/history.html
+   ============================================================ */
+
+@media (max-width: 479px) {
+
+  /* ── Layout ──────────────────────────────────────────────── */
+  .hist-wrap {
+    padding: 0 14px;
+    /* room for bottom bar + iPhone home indicator */
+    padding-bottom: calc(68px + env(safe-area-inset-bottom, 12px));
+  }
+
+  /* ── Header ──────────────────────────────────────────────── */
+  .hist-header { padding-top: 22px; }
+
+  /* Hide desktop back button — bottom bar handles nav on phone */
+  .btn-back { display: none; }
+
+}
