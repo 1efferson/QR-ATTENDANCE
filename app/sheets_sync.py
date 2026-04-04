@@ -175,6 +175,150 @@ def create_sheet_tab(batch) -> None:
         logger.error("Failed to create sheet tab '%s': %s", tab_name, e)
 
 
+def append_students_to_sheet_batch(batch, unsynced_users: list) -> dict:
+    """
+    Batch append multiple unsynced students to their batch's Google Sheet.
+    
+    Only adds student names to column A — formulas in B, C, D auto-calculate.
+    Called by Celery task every 5 minutes to sync students with is_synced_to_sheets=False.
+    
+    Optimized for minimal API quota usage:
+    - Single fetch of existing names
+    - Single batch write of all new names
+    - Skips duplicates without API calls
+    
+    Args:
+        batch: Batch object with current_level
+        unsynced_users: List of User objects with is_synced_to_sheets=False
+    
+    Returns:
+        {
+            "appended": int (newly added students),
+            "skipped": int (students already in sheet)
+        }
+    
+    Raises:
+        Exception: If worksheet not found or sheet API fails
+    """
+    from gspread.exceptions import APIError
+    import time
+    
+    if not batch or not unsynced_users:
+        return {"appended": 0, "skipped": 0}
+    
+    tab_name = _worksheet_name(batch)
+    appended_count = 0
+    skipped_count = 0
+    
+    try:
+        ws = _get_worksheet(tab_name)
+        logger.info("Starting batch append for '%s' with %d unsynced students.", 
+                    batch.name, len(unsynced_users))
+        
+        # ─────────────────────────────────────────────────────────────────
+        # 1. Fetch all existing names in column A (single API call)
+        # ─────────────────────────────────────────────────────────────────
+        try:
+            all_names = ws.col_values(1)  # Get entire column A
+        except APIError as e:
+            logger.error("Failed to fetch existing names for '%s': %s", batch.name, e)
+            raise
+        
+        # Build a set of lowercase names from FIRST_DATA_ROW onwards
+        # (rows 1-3 are headers/titles, skip them)
+        existing_names_lower = {
+            name.strip().lower() 
+            for name in all_names[FIRST_DATA_ROW - 1:]  # 0-indexed, so row 4 = index 3
+            if name.strip()
+        }
+        
+        logger.debug("Found %d existing students in '%s'.", len(existing_names_lower), tab_name)
+        
+        # ─────────────────────────────────────────────────────────────────
+        # 2. Build list of students to append (filter out duplicates)
+        # ─────────────────────────────────────────────────────────────────
+        students_to_append = []
+        
+        for user in unsynced_users:
+            user_name_lower = user.name.strip().lower()
+            
+            if user_name_lower in existing_names_lower:
+                logger.debug("'%s' already exists in '%s'.", user.name, tab_name)
+                skipped_count += 1
+            else:
+                students_to_append.append(user.name.strip())
+        
+        if not students_to_append:
+            logger.info("No new students to append for '%s'.", batch.name)
+            return {"appended": 0, "skipped": skipped_count}
+        
+        # ─────────────────────────────────────────────────────────────────
+        # 3. Find the first empty row in column A (starting from FIRST_DATA_ROW)
+        # ─────────────────────────────────────────────────────────────────
+        start_row = FIRST_DATA_ROW
+        for idx, name in enumerate(all_names[FIRST_DATA_ROW - 1:], start=FIRST_DATA_ROW):
+            if not name.strip():
+                start_row = idx
+                break
+        else:
+            # No empty rows found, append after the last entry
+            start_row = len(all_names) + 1
+        
+        logger.info("Will start appending at row %d in '%s'.", start_row, tab_name)
+        
+        # ─────────────────────────────────────────────────────────────────
+        # 4. Batch append all new students (single API call)
+        # ─────────────────────────────────────────────────────────────────
+        try:
+            # Prepare range notation for batch update
+            # e.g., if appending 5 students starting at row 10: A10:A14
+            end_row = start_row + len(students_to_append) - 1
+            range_notation = f"A{start_row}:A{end_row}"
+            
+            # Convert list to 2D array (gspread expects [[val1], [val2], ...])
+            values_to_write = [[name] for name in students_to_append]
+            
+            # Use the safer update() method instead of values_batch_update()
+            # This avoids the API parameter structure issues
+            ws.update(range_notation, values_to_write)
+            
+            appended_count = len(students_to_append)
+            logger.info("Successfully appended %d new students to '%s' at rows %d-%d.",
+                        appended_count, tab_name, start_row, end_row)
+            
+        except APIError as e:
+            if e.response.status_code == 429:
+                # Quota exceeded
+                logger.error("Google Sheets API quota exceeded while appending to '%s'. "
+                            "Retry in a few minutes.", batch.name)
+                raise
+            else:
+                logger.error("API error while appending to '%s': %s", batch.name, e)
+                raise
+        
+        except Exception as e:
+            logger.error("Unexpected error while appending to '%s': %s", batch.name, e)
+            raise
+        
+        # ─────────────────────────────────────────────────────────────────
+        # 5. Return summary
+        # ─────────────────────────────────────────────────────────────────
+        result = {
+            "appended": appended_count,
+            "skipped": skipped_count
+        }
+        
+        logger.info("Batch append complete for '%s': %d appended, %d already existed.",
+                    batch.name, appended_count, skipped_count)
+        
+        return result
+        
+    except Exception as e:
+        logger.error("Batch append failed for '%s': %s", batch.name, e)
+        # Let exception bubble up — Celery's autoretry_for will handle retry
+        raise
+
+
 def append_student_to_sheet(user, retries: int = 3, backoff: float = 2.0) -> None:
     """
     Append a newly registered student's name to column A of their batch's
@@ -263,11 +407,16 @@ def sync_daily_attendance(
     target_date=None
 ) -> dict:
     """
-    High-efficiency daily sync.
+    High-efficiency daily sync for attendance marks.
+    
     1. Finds the correct date column.
     2. Maps student names to row indices.
-    3. Batches all 1s and 0s into a single API write call.
+    3. Updates attendance marks (1 = present, 0 = absent).
+    
+    Optimized for gspread 5.12.0 — uses safe, reliable update methods.
     """
+    from datetime import date
+    
     target_date = target_date or date.today()
     date_str = target_date.strftime(DATE_FORMAT)
 
@@ -275,30 +424,26 @@ def sync_daily_attendance(
 
     try:
         ws = _get_worksheet(worksheet_name)
+        logger.info("Starting attendance sync for '%s' on %s", worksheet_name, date_str)
         
         # 1. Get the Date Column index (Discovery)
         col_idx = _get_or_create_date_col(ws, date_str)
+        logger.debug("Using date column %d for '%s'", col_idx, date_str)
         
-        # 2. Fetch all names (Col A) and all current values in the target date column
-        # We use a range request to get exactly what we need in one go
-        # e.g., "A1:A100" and "F1:F100"
+        # 2. Fetch all names (Col A) in one call
         max_rows = ws.row_count
-        data_range = f"A1:A{max_rows}"
-        attendance_range = f"{gspread.utils.rowcol_to_a1(1, col_idx)}:{gspread.utils.rowcol_to_a1(max_rows, col_idx)}"
+        all_names = ws.col_values(1)  # Get entire column A
         
-        # Fetching multiple ranges in one call saves API quota significantly
-        batch_data = ws.spreadsheet.values_batch_get([
-            f"'{worksheet_name}'!{data_range}", 
-            f"'{worksheet_name}'!{attendance_range}"
-        ])
-        
-        # Parse the results
-        all_names = [row[0] if row else "" for row in batch_data['valueRanges'][0].get('values', [])]
-        current_vals = [row[0] if row else "" for row in batch_data['valueRanges'][1].get('values', [])]
-
         # 3. Create a lookup map { "student name": row_index }
-        name_map = {name.strip().lower(): i + 1 for i, name in enumerate(all_names) if name.strip()}
+        name_map = {
+            name.strip().lower(): i + 1 
+            for i, name in enumerate(all_names) 
+            if name.strip() and i + 1 >= FIRST_DATA_ROW
+        }
         
+        logger.debug("Found %d students for lookup in '%s'", len(name_map), worksheet_name)
+        
+        # 4. Build list of cells to update
         updates = []
 
         # Helper to queue updates
@@ -309,43 +454,111 @@ def sync_daily_attendance(
                 
                 if not row_idx or row_idx < FIRST_DATA_ROW:
                     result["not_found"].append(name)
+                    logger.warning("Student '%s' not found in '%s'", name, worksheet_name)
                     continue
                 
-                # Check if cell is already filled (don't overwrite or waste API calls)
-                # (current_vals is 0-indexed, row_idx is 1-indexed)
-                existing_val = current_vals[row_idx - 1] if row_idx <= len(current_vals) else ""
-                
-                if str(existing_val).strip() == "":
-                    cell_a1 = gspread.utils.rowcol_to_a1(row_idx, col_idx)
-                    updates.append({
-                        "range": f"'{worksheet_name}'!{cell_a1}",
-                        "values": [[value]]
-                    })
+                # Convert to A1 notation: e.g., "F4" for column F, row 4
+                cell_a1 = gspread.utils.rowcol_to_a1(row_idx, col_idx)
+                updates.append({
+                    "cell": cell_a1,
+                    "value": value
+                })
 
         # Process Presents and Absences
         queue_update(present_names, VALUE_PRESENT)
         queue_update(absent_names, VALUE_ABSENT)
 
-        # 4. Final Atomic Write
+        # 5. Write updates — use safe method for gspread 5.12.0
         if updates:
-            # We use the spreadsheet object's batch_update to handle range-specific updates
-            ws.spreadsheet.values_batch_update({
-                "valueInputOption": "USER_ENTERED",
-                "data": updates
-            })
-            result["updates_count"] = len(updates)
-            logger.info("Successfully synced %d records to '%s'", len(updates), worksheet_name)
+            try:
+                # Method 1: Try batch_update (most reliable)
+                _batch_update_cells(ws, updates, worksheet_name)
+                result["updates_count"] = len(updates)
+                logger.info("Successfully synced %d attendance records to '%s'", 
+                           len(updates), worksheet_name)
+                
+            except Exception as batch_error:
+                # Method 2: Fallback to individual cell updates
+                logger.warning("Batch update failed for '%s', falling back to individual updates: %s", 
+                              worksheet_name, batch_error)
+                
+                success_count = 0
+                for update in updates:
+                    try:
+                        ws.update_cell(
+                            *gspread.utils.a1_to_rowcol(update["cell"]),
+                            update["value"]
+                        )
+                        success_count += 1
+                    except Exception as e:
+                        logger.error("Failed to update %s in '%s': %s", 
+                                    update["cell"], worksheet_name, e)
+                
+                result["updates_count"] = success_count
+                logger.info("Completed %d/%d individual updates for '%s'", 
+                           success_count, len(updates), worksheet_name)
         else:
             logger.info("No new updates needed for '%s'.", worksheet_name)
 
+        result["success"] = True
         return result
 
     except APIError as e:
         if e.response.status_code == 429:
-            logger.error("Quota exceeded on Google Sheets.")
+            logger.error("Quota exceeded on Google Sheets for '%s'.", worksheet_name)
             return {"success": False, "message": "Quota exceeded"}
+        logger.error("API error during attendance sync for '%s': %s", worksheet_name, e)
         raise e
+    
+    except Exception as e:
+        logger.error("Unexpected error during attendance sync for '%s': %s", worksheet_name, e)
+        raise
 
+
+def _batch_update_cells(ws: gspread.Worksheet, updates: list, worksheet_name: str) -> None:
+    """
+    Safely batch update cells using gspread 5.12.0 compatible methods.
+    
+    Args:
+        ws: gspread Worksheet object
+        updates: List of {"cell": "A1", "value": value} dicts
+        worksheet_name: Sheet name for logging
+    """
+    if not updates:
+        return
+    
+    try:
+        # Method 1: Use values_update with individual ranges
+        # Group updates by range for efficiency
+        ranges_and_values = [
+            (update["cell"], [[update["value"]]])
+            for update in updates
+        ]
+        
+        # Use batch_update with valueRanges
+        body = {
+            "valueInputOption": "RAW",  # Don't interpret formulas
+            "data": [
+                {
+                    "range": f"'{worksheet_name}'!{cell}",
+                    "values": values
+                }
+                for cell, values in ranges_and_values
+            ]
+        }
+        
+        # Call the underlying client's batch_update to avoid parameter issues
+        ws.spreadsheet.client.batch_update(
+            spreadsheet_id=ws.spreadsheet.id,
+            body=body
+        )
+        logger.debug("Batch updated %d cells in '%s' using client.batch_update", 
+                    len(updates), worksheet_name)
+        
+    except Exception as e:
+        # If batch_update fails, let the caller try fallback method
+        logger.warning("Batch update failed, will fall back: %s", e)
+        raise
 
 
 
