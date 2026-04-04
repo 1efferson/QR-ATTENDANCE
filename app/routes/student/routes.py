@@ -2,14 +2,18 @@ from flask import render_template, redirect, url_for, flash, request, jsonify, c
 from flask_login import login_required, current_user
 from . import student_bp
 from app import db
-from app.models import Attendance, BlockedAttempt, Batch
+from app.models import Attendance, BlockedAttempt, Batch, Absence
 from datetime import datetime
 from app.utils.ip_validation import is_ip_whitelisted, get_client_ip
 import logging
 from datetime import datetime, timedelta
 from sqlalchemy.exc import IntegrityError
+from math import ceil
+from datetime import datetime as _dt
 
 logger = logging.getLogger(__name__)
+
+HISTORY_MONTHS_PER_PAGE = 2
 
 @student_bp.route('/scan')
 @login_required
@@ -133,21 +137,78 @@ def mark_attendance():
 @student_bp.route('/history')
 @login_required
 def history():
-    """Shows student their own attendance history grouped by month."""
+    """
+    Shows student their attendance + absence history grouped by month,
+    paginated by month groups (3 months per page).
+    Summary pill counts always reflect the full record, not just the current page.
+    """
     if current_user.role != 'student':
         flash("Access denied.", "error")
         return redirect(url_for('instructor.dashboard'))
 
-    records = Attendance.query.filter_by(
+    # ── Fetch both tables ────────────────────────────────────────────
+    attendances = Attendance.query.filter_by(
         user_id=current_user.id
     ).order_by(Attendance.timestamp.desc()).all()
 
-    grouped = {}
-    for record in records:
-        month_key = record.timestamp.strftime('%B %Y')
-        grouped.setdefault(month_key, []).append(record)
+    absences = Absence.query.filter_by(
+        user_id=current_user.id
+    ).order_by(Absence.date.desc()).all()
 
-    return render_template('student/history.html', grouped_records=grouped)
+    # ── Merge into a unified list ────────────────────────────────────
+    records = []
+
+    for a in attendances:
+        records.append({
+            'type':          'present',
+            'course_code':   a.course_code,
+            'is_personal_time': a.is_personal_time,
+            'sort_dt':       a.timestamp,
+            'display_date':  a.timestamp.strftime('%d %B %Y, %I:%M %p'),
+            'day_name':      a.timestamp.strftime('%A'),
+            'month_key':     a.timestamp.strftime('%B %Y'),
+        })
+
+    for ab in absences:
+        dt = _dt.combine(ab.date, _dt.min.time())
+        records.append({
+            'type':          'absent',
+            'course_code':   'General Attendance',
+            'is_personal_time': False,
+            'sort_dt':       dt,
+            'display_date':  ab.date.strftime('%d %B %Y'),
+            'day_name':      ab.date.strftime('%A'),
+            'month_key':     ab.date.strftime('%B %Y'),
+        })
+
+    # Sort newest first
+    records.sort(key=lambda r: r['sort_dt'], reverse=True)
+
+    # ── Group all records by month (used for grand total pills) ──────
+    all_grouped = {}
+    for record in records:
+        all_grouped.setdefault(record['month_key'], []).append(record)
+
+    # ── Paginate by month group ──────────────────────────────────────
+    month_keys  = list(all_grouped.keys())   # already sorted newest-first
+    total_months = len(month_keys)
+    total_pages  = max(1, ceil(total_months / HISTORY_MONTHS_PER_PAGE))
+
+    # Clamp page to valid range
+    page = request.args.get('page', 1, type=int)
+    page = max(1, min(page, total_pages))
+
+    start = (page - 1) * HISTORY_MONTHS_PER_PAGE
+    page_keys = month_keys[start:start + HISTORY_MONTHS_PER_PAGE]
+    grouped_records = {k: all_grouped[k] for k in page_keys}
+
+    return render_template(
+        'student/history.html',
+        grouped_records=grouped_records,   # current page only
+        all_records=all_grouped,           # full set for summary pill counts
+        page=page,
+        total_pages=total_pages,
+    )
 
 
 @student_bp.route('/debug-ip')
