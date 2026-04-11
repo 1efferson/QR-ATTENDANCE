@@ -105,11 +105,11 @@ def dashboard():
         if batch_id:
             avg_checkin_times   = AttendanceQueries.student_average_checkin_time(level, days, batch_id)
             student_percentages = AttendanceQueries.attendance_percentage_per_student(level, days, batch_id)
-            students_below_60   = AttendanceQueries.students_below_threshold(60, level, days, batch_id)
+            students_below_80   = AttendanceQueries.students_below_threshold(80, level, days, batch_id)
         else:
             avg_checkin_times   = []
             student_percentages = []
-            students_below_60   = []
+            students_below_80   = []
 
         return render_template('instructor/dashboard.html',
                                level=level,
@@ -123,7 +123,7 @@ def dashboard():
                                avg_checkin_times=avg_checkin_times,
                                top_5_earliest=top_5_earliest,
                                student_percentages=student_percentages,
-                               students_below_60=students_below_60,
+                               students_below_80=students_below_80,
                                todays_absences=todays_absences,
                                todays_personal_time=todays_personal_time,
                                no_data=False)
@@ -137,7 +137,7 @@ def dashboard():
                                today_checkins=0, expected_students=0,
                                today_percentage=0, avg_checkin_times=[],
                                top_5_earliest=[], student_percentages=[],
-                               students_below_60=[], todays_absences=[],
+                               students_below_80=[], todays_absences=[],
                                todays_personal_time=[], no_data=True)
 
     except Exception:
@@ -149,7 +149,7 @@ def dashboard():
                                today_checkins=0, expected_students=0,
                                today_percentage=0, avg_checkin_times=[],
                                top_5_earliest=[], student_percentages=[],
-                               students_below_60=[], todays_absences=[],
+                               students_below_80=[], todays_absences=[],
                                todays_personal_time=[], no_data=True)
 
 # ---------------------------------------------------------------------------

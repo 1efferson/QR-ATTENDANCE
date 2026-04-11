@@ -47,7 +47,7 @@
             class="flex flex-wrap items-end gap-3 w-full" id="filterForm">
 
         <!-- Batch -->
-        <div class="flex flex-col gap-1 flex-1 min-w-[160px]">
+        <div class="flex flex-col gap-1 flex-1 min-w-40">
           <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Batch</label>
           <select name="batch_id" id="batchSelect"
                   class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
@@ -61,7 +61,7 @@
         </div>
 
         <!-- Level -->
-        <div class="flex flex-col gap-1 flex-1 min-w-[140px]">
+        <div class="flex flex-col gap-1 flex-1 min-w-35">
           <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Level</label>
           <select name="level" id="levelSelect"
                   class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
@@ -75,7 +75,7 @@
         </div>
 
         <!-- Days -->
-        <div class="flex flex-col gap-1 flex-1 min-w-[120px]">
+        <div class="flex flex-col gap-1 flex-1 min-w-30">
           <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Period</label>
           <select name="days" id="daysSelect"
                   class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
@@ -139,7 +139,7 @@
 
       <!-- Today's Check-ins -->
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
-        <div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
+        <div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink: 0">
           <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                   d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
@@ -153,7 +153,7 @@
 
       <!-- Expected Students -->
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
-        <div class="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
+        <div class="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center flex-shrink: 0">
           <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                   d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
@@ -169,7 +169,7 @@
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4">
         <div class="w-12 h-12 rounded-full
           {% if today_percentage >= 75 %}bg-green-100{% elif today_percentage >= 50 %}bg-yellow-100{% else %}bg-red-100{% endif %}
-          flex items-center justify-center flex-shrink-0">
+          flex items-center justify-center flex-shrink: 0">
           <svg class="w-6 h-6
             {% if today_percentage >= 75 %}text-green-600{% elif today_percentage >= 50 %}text-yellow-600{% else %}text-red-600{% endif %}"
                fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -192,7 +192,7 @@
 
       <!-- Top 5 Earliest -->
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition">
-        <div class="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-green-50 to-emerald-50 rounded-t-xl">
+        <div class="px-5 py-4 border-b border-gray-100 bg-linear-to-r from-green-50 to-emerald-50 rounded-t-xl">
           <h2 class="text-base font-semibold text-gray-900">🏆 Top 5 Earliest Today</h2>
           <p class="text-xs text-gray-500 mt-0.5">First arrivals for {{ now.strftime('%d %b') if now else 'today' }}</p>
         </div>
@@ -201,7 +201,7 @@
             <ol class="space-y-3">
               {% for student in top_5_earliest %}
               <li class="flex items-center gap-3">
-                <span class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0
+                <span class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink: 0
                   {% if loop.index == 1 %}bg-yellow-100 text-yellow-700
                   {% elif loop.index == 2 %}bg-gray-100 text-gray-600
                   {% elif loop.index == 3 %}bg-orange-100 text-orange-600
@@ -212,7 +212,7 @@
                   <p class="text-sm font-medium text-gray-900 truncate">{{ student.student_name }}</p>
                   <p class="text-xs text-gray-400 truncate">{{ student.student_email }}</p>
                 </div>
-                <span class="text-sm font-semibold text-green-700 bg-green-50 px-2.5 py-1 rounded-full flex-shrink-0">
+                <span class="text-sm font-semibold text-green-700 bg-green-50 px-2.5 py-1 rounded-full flex-shrink: 0">
                   {{ student.checkin_time }}
                 </span>
               </li>
@@ -228,7 +228,7 @@
 
       <!-- Absent Today -->
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition">
-        <div class="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-red-50 to-rose-50 rounded-t-xl">
+        <div class="px-5 py-4 border-b border-gray-100 bg-linear-to-r from-red-50 to-rose-50 rounded-t-xl">
           <div class="flex items-center justify-between flex-wrap gap-2">
             <div>
               <h2 class="text-base font-semibold text-gray-900">🚨 Absent Today</h2>
@@ -262,7 +262,7 @@
             <ul class="space-y-2 max-h-60 overflow-y-auto pr-1">
               {% for absence in todays_absences %}
               <li class="flex items-center gap-3 p-2 rounded-lg bg-red-50">
-                <div class="w-7 h-7 rounded-full bg-red-200 flex items-center justify-center flex-shrink-0">
+                <div class="w-7 h-7 rounded-full bg-red-200 flex items-center justify-center flex-shrink: 0">
                   <span class="text-xs font-bold text-red-700">{{ absence.student_name[0] | upper }}</span>
                 </div>
                 <div class="flex-1 min-w-0">
@@ -270,9 +270,9 @@
                   <p class="text-xs text-gray-400 truncate">{{ absence.student_email or 'No email' }}</p>
                 </div>
                 {% if absence.notified %}
-                  <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex-shrink-0">Notified</span>
+                  <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex-shrink: 0">Notified</span>
                 {% else %}
-                  <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full flex-shrink-0">Pending</span>
+                  <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full flex-shrink: 0">Pending</span>
                 {% endif %}
               </li>
               {% endfor %}
@@ -286,12 +286,12 @@
       </div>
     </div>
 
-    <!-- ─────────────────── PERSONAL TIME + STUDENTS BELOW 60 ───────────────── -->
+    <!-- ─────────────────── PERSONAL TIME + STUDENTS BELOW 80 ───────────────── -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
 
       <!-- Personal Time Today -->
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition">
-        <div class="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-indigo-50 to-blue-50 rounded-t-xl">
+        <div class="px-5 py-4 border-b border-gray-100 bg-linear-to-r from-indigo-50 to-blue-50 rounded-t-xl">
           <h2 class="text-base font-semibold text-gray-900">⏱ Personal Time Today</h2>
           <p class="text-xs text-gray-500 mt-0.5">Students who scanned on a non-class day</p>
         </div>
@@ -300,14 +300,14 @@
             <ul class="space-y-2 max-h-60 overflow-y-auto pr-1">
               {% for student in todays_personal_time %}
               <li class="flex items-center gap-3 p-2 rounded-lg bg-indigo-50">
-                <div class="w-7 h-7 rounded-full bg-indigo-200 flex items-center justify-center flex-shrink-0">
+                <div class="w-7 h-7 rounded-full bg-indigo-200 flex items-center justify-center flex-shrink: 0">
                   <span class="text-xs font-bold text-indigo-700">{{ student.student_name[0] | upper }}</span>
                 </div>
                 <div class="flex-1 min-w-0">
                   <p class="text-sm font-medium text-gray-900 truncate">{{ student.student_name }}</p>
                   <p class="text-xs text-gray-400 truncate">{{ student.student_email or 'No email' }}</p>
                 </div>
-                <span class="text-sm font-semibold text-indigo-700 bg-indigo-100 px-2.5 py-1 rounded-full flex-shrink-0">
+                <span class="text-sm font-semibold text-indigo-700 bg-indigo-100 px-2.5 py-1 rounded-full flex-shrink: 0">
                   {{ student.checkin_time }}
                 </span>
               </li>
@@ -321,26 +321,26 @@
         </div>
       </div>
 
-      <!-- Students Below 60% -->
+      <!-- Students Below 80% -->
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition">
-        <div class="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-orange-50 to-amber-50 rounded-t-xl">
-          <h2 class="text-base font-semibold text-gray-900">⚠️ Students Below 60%</h2>
+        <div class="px-5 py-4 border-b border-gray-100 bg-linear-to-r from-orange-50 to-amber-50 rounded-t-xl">
+          <h2 class="text-base font-semibold text-gray-900">⚠️ Students Below 80%</h2>
           <p class="text-xs text-gray-500 mt-0.5">At-risk attendance over last {{ days }} days</p>
         </div>
         <div class="p-4">
-          {% if students_below_60 %}
+          {% if students_below_80 %}
             <ul class="space-y-2 max-h-60 overflow-y-auto pr-1">
-              {% for student in students_below_60 %}
+              {% for student in students_below_80 %}
               <li class="flex items-center gap-3 p-2 rounded-lg bg-orange-50 cursor-pointer student-row"
                   data-student-id="{{ student.student_id }}">
-                <div class="w-7 h-7 rounded-full bg-orange-200 flex items-center justify-center flex-shrink-0">
+                <div class="w-7 h-7 rounded-full bg-orange-200 flex items-center justify-center flex-shrink: 0">
                   <span class="text-xs font-bold text-orange-700">{{ student.student_name[0] | upper }}</span>
                 </div>
                 <div class="flex-1 min-w-0">
                   <p class="text-sm font-medium text-gray-900 truncate">{{ student.student_name }}</p>
                   <p class="text-xs text-gray-400">{{ student.days_attended }}/{{ student.total_days }} days</p>
                 </div>
-                <span class="text-sm font-bold text-red-600 bg-red-100 px-2.5 py-1 rounded-full flex-shrink-0">
+                <span class="text-sm font-bold text-red-600 bg-red-100 px-2.5 py-1 rounded-full flex-shrink: 0">
                   {{ student.attendance_pct }}%
                 </span>
               </li>
@@ -348,7 +348,7 @@
             </ul>
           {% else %}
             <div class="text-center py-8">
-              <p class="text-gray-400 text-sm">All students above 60% — great work!</p>
+              <p class="text-gray-400 text-sm">All students above 80% — great work!</p>
             </div>
           {% endif %}
         </div>
@@ -358,7 +358,7 @@
     <!-- ─────────────────────── AVG CHECK-IN TIMES ───────────────────────────── -->
     {% if avg_checkin_times %}
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6 hover:shadow-md transition">
-      <div class="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-teal-50 to-cyan-50 rounded-t-xl">
+      <div class="px-5 py-4 border-b border-gray-100 bg-linear-to-r from-teal-50 to-cyan-50 rounded-t-xl">
         <h2 class="text-base font-semibold text-gray-900">🕐 Average Check-in Times</h2>
         <p class="text-xs text-gray-500 mt-0.5">Class scans only · Last {{ days }} days</p>
       </div>
@@ -393,7 +393,7 @@
 
     <!-- ──────────────────────── MAIN ATTENDANCE SHEET ──────────────────────── -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6 hover:shadow-md transition">
-      <div class="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-purple-50 to-pink-50 rounded-t-xl">
+      <div class="px-5 py-4 border-b border-gray-100 bg-linear-to-r from-purple-50 to-pink-50 rounded-t-xl">
         <div class="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h2 class="text-base font-semibold text-gray-900">📋 Attendance Sheet</h2>
@@ -471,16 +471,16 @@
               </td>
               <td class="px-5 py-3 whitespace-nowrap text-center">
                 <span class="text-lg font-bold
-                  {% if student.attendance_pct >= 75 %}text-green-600
-                  {% elif student.attendance_pct >= 60 %}text-yellow-600
+                  {% if student.attendance_pct >= 80 %}text-green-600
+                  {% elif student.attendance_pct >= 70 %}text-yellow-600
                   {% else %}text-red-600{% endif %}">
                   {{ student.attendance_pct }}%
                 </span>
               </td>
               <td class="px-5 py-3 whitespace-nowrap text-center">
-                {% if student.attendance_pct >= 75 %}
+                {% if student.attendance_pct >= 80 %}
                   <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Excellent</span>
-                {% elif student.attendance_pct >= 60 %}
+                {% elif student.attendance_pct >= 70 %}
                   <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">Good</span>
                 {% else %}
                   <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">At Risk</span>
@@ -515,7 +515,7 @@
   <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
 
     <!-- Modal header -->
-    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-indigo-50 to-purple-50 rounded-t-2xl flex-shrink-0">
+    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-linear-to-r from-indigo-50 to-purple-50 rounded-t-2xl flex-shrink: 0">
       <div>
         <h2 id="modalStudentName" class="text-lg font-bold text-gray-900">Student Details</h2>
         <p id="modalStudentEmail" class="text-sm text-gray-500"></p>

@@ -1,20 +1,13 @@
 /* ============================================================
    student-mobile.css
    Shared bottom bar styles for all student pages.
-   Loaded globally via base.html.
    ============================================================ */
 
-/* ── Hide bottom bar by default on desktop + tablet ─────────
-   This MUST sit outside any media query so it applies
-   everywhere first, before the phone rule overrides it.
-   ──────────────────────────────────────────────────────────── */
+/* ── Phone only (< 640px): show the bottom bar */
 .bottom-bar { display: none; }
 
+@media (max-width: 639px) {
 
-/* ── Phone only (≤ 479px) ────────────────────────────────── */
-@media (max-width: 479px) {
-
-  /* ── iOS-style bottom navigation bar (light frosted glass) ── */
   .bottom-bar {
     display: flex;
     position: fixed;
@@ -28,6 +21,11 @@
     align-items: center;
     justify-content: space-around;
     z-index: 100;
+  }
+
+  /* Push page content up so it isn't hidden behind the bar */
+  body {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
   }
 
   .bar-btn {
@@ -63,4 +61,14 @@
   .bar-btn.active     { color: #6366f1; }
   .bar-btn.active svg { stroke: #6366f1; }
 
+}
+
+.student-nav-settings {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .student-nav-settings {
+    display: inline-block;
+  }
 }

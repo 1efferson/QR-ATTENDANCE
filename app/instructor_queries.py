@@ -306,7 +306,7 @@ class AttendanceQueries:
             User.id, User.name, User.email, User.level, User.batch_id,
             days_attended_count.label('days_attended'),
             attendance_pct_expr.label('attendance_pct'),
-            (attendance_pct_expr < 60).label('is_below_threshold'),
+            (attendance_pct_expr < 80).label('is_below_threshold'),
             (absent_today_sq > 0).label('is_absent_today'),
             (pt_today_sq > 0).label('is_pt_today')
         ).outerjoin(
@@ -346,7 +346,7 @@ class AttendanceQueries:
         return results
     
     @staticmethod
-    def students_below_threshold(threshold=60, level=None, days=30, batch_id=None):
+    def students_below_threshold(threshold=80, level=None, days=30, batch_id=None):
         """
         Flag students below the given attendance threshold.
         Excludes personal time from attendance count.
@@ -466,7 +466,7 @@ class AttendanceQueries:
             'expected_students':       AttendanceQueries.total_expected_students(level, batch_id),
             'top_5_earliest':          AttendanceQueries.top_5_earliest_students(level, batch_id=batch_id),
             'average_checkin_times':   AttendanceQueries.student_average_checkin_time(level, days, batch_id),
-            'students_below_60':       AttendanceQueries.students_below_threshold(60, level, days, batch_id),
+            'students_below_80':       AttendanceQueries.students_below_threshold(80, level, days, batch_id),
             'all_student_percentages': AttendanceQueries.attendance_percentage_per_student(level, days, batch_id),
             'period_days':             days
         }
