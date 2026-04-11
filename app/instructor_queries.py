@@ -34,7 +34,7 @@ class AttendanceQueries:
         ).join(
             User, User.id == Attendance.user_id
         ).filter(
-            # RANGE-BASED FILTER: This is highly efficient with your index
+            # RANGE-BASED FILTER
             Attendance.timestamp >= today_start,
             Attendance.timestamp <= today_end,
             Attendance.is_personal_time == False,
@@ -138,7 +138,6 @@ class AttendanceQueries:
             User.role == 'student',
             Attendance.timestamp >= cutoff_date,
             Attendance.is_personal_time == False,
-            # Only count scans that match the student's current level
             Attendance.student_level == User.level
         )
 
@@ -359,7 +358,6 @@ class AttendanceQueries:
         """
         cutoff_date = datetime.now() - timedelta(days=days)
 
-        # Re-use attendance_percentage_per_student to ensure consistent
         # total_days anchoring via level_started_at
         all_students = AttendanceQueries.attendance_percentage_per_student(
             level=level, days=days, batch_id=batch_id
