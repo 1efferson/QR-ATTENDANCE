@@ -11,10 +11,16 @@ from sqlalchemy import select, not_
 logger = logging.getLogger(__name__)
 
 
-def _run_absence_sync():
+def _run_absence_sync(force=False):
     from app import db
     from app.models import Batch, User, Attendance, Absence
-    from gspread.exceptions import APIError
+
+    now = datetime.now()
+
+    CUTOFF_HOUR = 20
+    if not force and now.hour < CUTOFF_HOUR:
+        logger.warning("Absence sync called before cutoff (%d:00). Skipping.", CUTOFF_HOUR)
+        return {'skipped': True, 'reason': f'Too early — run after {CUTOFF_HOUR}:00'}
 
     today = date.today()
     today_weekday = today.weekday()
@@ -31,8 +37,9 @@ def _run_absence_sync():
 
     if not batches_today:
         logger.info("No batches scheduled for today. Nothing to do.")
-        return
+        return {'skipped': True, 'reason': 'No batches scheduled for today'}
 
+    processed = 0
     for batch in batches_today:
         logger.info("Processing batch: '%s' [%s]", batch.name, batch.current_level)
 
@@ -65,7 +72,6 @@ def _run_absence_sync():
                 db.session.rollback()
                 logger.error("Failed to commit absences for '%s': %s", batch.name, e)
 
-        # Lazy import — safe whether Celery is running or not
         from app.tasks.sheet_tasks import sync_batch_attendance_task, _do_batch_attendance_sync
 
         if sync_batch_attendance_task is not None:
@@ -76,14 +82,16 @@ def _run_absence_sync():
             )
             logger.info("Sheet sync enqueued for batch '%s'.", batch.name)
         else:
-            # No Celery — run synchronously (local dev only)
             logger.warning("Celery not available — running sheet sync synchronously for '%s'.", batch.name)
             try:
                 _do_batch_attendance_sync(batch.id, str(today))
             except Exception as e:
                 logger.error("Synchronous sheet sync failed for '%s': %s", batch.name, e)
 
-    logger.info("=== Absence sync complete ===")
+        processed += 1
+
+    logger.info("=== Absence sync complete — %d batch(es) processed ===", processed)
+    return {'skipped': False, 'processed': processed}
 
 
 def init_scheduler(app):
@@ -92,7 +100,7 @@ def init_scheduler(app):
     def job_with_context():
         with app.app_context():
             try:
-                _run_absence_sync()
+                _run_absence_sync(force=True)  # scheduler always runs at 9pm, no cutoff check needed
             except Exception as e:
                 logger.exception("Absence sync job failed: %s", e)
 
