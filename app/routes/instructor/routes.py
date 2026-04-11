@@ -347,15 +347,18 @@ def level_detail(level):
 @instructor_bp.route('/run-absence-check', methods=['POST'])
 @instructor_required
 def run_absence_check():
-    """Manually trigger the optimized absence check job."""
+    """Manually trigger the absence check job."""
     try:
-        # Import the new optimized function
         from app.scheduler import _run_absence_sync
-        
-        # Run it (it uses app_context via the scheduler logic)
-        _run_absence_sync() 
-        
-        flash('Absence check and Google Sheets sync completed successfully.', 'success')
+        result = _run_absence_sync()
+
+        if result and result.get('skipped'):
+            flash(f"Nothing to do — {result['reason']}.", 'warning')
+        elif result:
+            flash(f"Absence check complete — {result['processed']} batch(es) processed.", 'success')
+        else:
+            flash('Absence check ran but returned no status.', 'warning')
+
     except Exception as e:
         logger.exception("Manual absence check failed")
         flash(f'Error running check: {str(e)}', 'error')
