@@ -218,7 +218,6 @@ class Attendance(db.Model):
         Index(
             'uix_user_level_date',
             'user_id',
-            'student_level',
             text("DATE(timestamp)"),
             unique=True
         ),

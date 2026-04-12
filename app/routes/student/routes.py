@@ -78,8 +78,7 @@ def mark_attendance():
     existing = Attendance.query.filter(
         Attendance.user_id == current_user.id,
         Attendance.timestamp >= today_start,
-        Attendance.timestamp < tomorrow_start,
-        Attendance.student_level == current_user.level 
+        Attendance.timestamp < tomorrow_start, 
     ).first()
  
     if existing:
