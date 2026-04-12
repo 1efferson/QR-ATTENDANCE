@@ -6,26 +6,41 @@
 <div class="min-h-screen bg-gray-50">
 
   <!-- ───────────────────────────── PAGE HEADER ───────────────────────────── -->
-  <div class="bg-white border-b border-gray-200 shadow-sm">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
-      <div class="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 class="text-2xl font-bold text-gray-900">Instructor Dashboard</h1>
-          <p class="text-sm text-gray-500 mt-0.5">
-            {{ now.strftime('%A, %d %B %Y') if now else '' }}
-            {% if selected_batch %}
-              · <span class="font-medium text-indigo-600">{{ selected_batch.name }}</span>
-            {% endif %}
-            {% if level %}
-              · <span class="capitalize font-medium text-purple-600">{{ level }}</span>
-            {% endif %}
-          </p>
-        </div>
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-6">
+  <div class="border-b border-gray-200 pb-5">
+    <div class="flex items-end justify-between gap-4">
+
+      <div class="space-y-1">
+        <p class="text-xs font-semibold tracking-widest text-gray-400 uppercase">
+          {{ now.strftime('%A, %d %B %Y') if now else '' }}
+        </p>
+        <h1 class="text-3xl font-bold tracking-tight text-gray-900">
+          Instructor Dashboard
+        </h1>
       </div>
+
+      {% if selected_batch or level %}
+      <div class="flex items-center gap-2 pb-1">
+        {% if selected_batch %}
+        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-indigo-50 border border-indigo-100 text-sm font-medium text-indigo-700">
+          <span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+          {{ selected_batch.name }}
+        </span>
+        {% endif %}
+        {% if level %}
+        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-purple-50 border border-purple-100 text-sm font-medium text-purple-700 capitalize">
+          <span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+          {{ level }}
+        </span>
+        {% endif %}
+      </div>
+      {% endif %}
+
     </div>
   </div>
+</div>
 
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-6">
 
     <!-- ─────────────────────────── FLASH MESSAGES ──────────────────────────── -->
     {% with messages = get_flashed_messages(with_categories=true) %}
