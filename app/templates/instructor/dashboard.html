@@ -433,10 +433,10 @@
 
       {% else %}
       <!-- Batch selected — show full table -->
-      <div class="overflow-x-auto">
+      <div class="overflow-x-auto overflow-y-auto max-h-100 md:max-h-130 lg:max-h-150"></div>
         {% if student_percentages %}
         <table class="min-w-full divide-y divide-gray-200">
-          <thead class="bg-gray-50 sticky top-0 z-10">
+           <thead class="bg-gray-50 sticky top-0 z-10">
             <tr>
               <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Student</th>
               <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
