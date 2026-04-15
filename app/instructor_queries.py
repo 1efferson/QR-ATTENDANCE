@@ -5,16 +5,86 @@ Filters students by `level` and/or `batch_id` independently
 Absence and Personal Time status computed inline per student
 Attendance % anchored to batch's level_started_at so promotions reset the clock
 student_level on Attendance ensures scans are counted for the correct level only
+Holiday and BatchException dates are cached in Redis for 24 hours and only
+re-queried when an admin adds or removes a holiday — never on every dashboard load
 """
 from datetime import datetime, date, timedelta
-from sqlalchemy import func, cast, Float, case, and_
 from sqlalchemy import func, case, cast, Float, and_, literal
-from app.models import Attendance, User, Absence, Batch, BatchSchedule
-from app import db
+from app.models import Attendance, User, Absence, Batch, BatchSchedule, Holiday, BatchException
+from app import db, cache
 import logging
 
 logger = logging.getLogger(__name__)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CACHE HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _get_excluded_dates(batch_id, effective_start, today):
+    """
+    Returns a set of date objects that should be excluded from total_days:
+      - Global holidays (affect all batches)
+      - BatchExceptions (affect one batch only)
+
+    Result is cached in Redis for 24 hours per batch.
+    Cache is invalidated immediately whenever an admin adds or removes
+    a holiday or batch exception — so the DB is never queried unnecessarily.
+
+    Cache key includes effective_start and today so different date windows
+    never share a stale result.
+    """
+    cache_key = f"excluded_dates:{batch_id or 'global'}:{effective_start}:{today}"
+
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    # Cache miss — query DB once and store result
+    global_holidays = {
+        row.date for row in
+        db.session.query(Holiday.date).filter(
+            Holiday.date >= effective_start,
+            Holiday.date <= today
+        ).all()
+    }
+
+    batch_exceptions = set()
+    if batch_id:
+        batch_exceptions = {
+            row.date for row in
+            db.session.query(BatchException.date).filter(
+                BatchException.batch_id == batch_id,
+                BatchException.date >= effective_start,
+                BatchException.date <= today
+            ).all()
+        }
+
+    excluded_dates = global_holidays | batch_exceptions
+
+    # Cache for 24 hours — invalidated on any admin write via invalidate_excluded_dates_cache()
+    cache.set(cache_key, excluded_dates, timeout=86400)
+
+    return excluded_dates
+
+
+def invalidate_excluded_dates_cache():
+    """
+    Wipes all excluded_dates cache entries.
+    Call this in every admin route that adds or deletes a Holiday or BatchException.
+    Uses cache.clear() which is safe — only excluded_dates keys matter for correctness,
+    and all other cache entries rebuild themselves on the next request.
+    """
+    try:
+        cache.clear()
+        logger.info("Holiday cache cleared successfully.")
+    except Exception as e:
+        logger.error("Failed to clear holiday cache: %s", e)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# QUERIES
+# ─────────────────────────────────────────────────────────────────────────────
 
 class AttendanceQueries:
     """Centralized queries with database-level aggregations"""
@@ -25,7 +95,6 @@ class AttendanceQueries:
         Total check-ins for today. Optimized for index usage by avoiding
         func.date() on the column side of the filter.
         """
-        # Using explicit start/end times ensures we hit the B-Tree index on 'timestamp'
         today_start = datetime.combine(date.today(), datetime.min.time())
         today_end   = datetime.combine(date.today(), datetime.max.time())
 
@@ -34,7 +103,6 @@ class AttendanceQueries:
         ).join(
             User, User.id == Attendance.user_id
         ).filter(
-            # RANGE-BASED FILTER
             Attendance.timestamp >= today_start,
             Attendance.timestamp <= today_end,
             Attendance.is_personal_time == False,
@@ -79,7 +147,6 @@ class AttendanceQueries:
         today_start = datetime.combine(date.today(), datetime.min.time())
         today_end   = datetime.combine(date.today(), datetime.max.time())
 
-        # Total expected students scalar subquery
         students_sq = db.session.query(func.count(User.id)).filter(User.role == 'student')
         if level:
             students_sq = students_sq.filter(User.level == level)
@@ -87,7 +154,6 @@ class AttendanceQueries:
             students_sq = students_sq.filter(User.batch_id == batch_id)
         students_scalar = students_sq.scalar_subquery()
 
-        # Total check-ins today (non-PT only) scalar subquery
         checkins_sq = db.session.query(
             func.count(Attendance.id)
         ).join(User, User.id == Attendance.user_id).filter(
@@ -151,8 +217,8 @@ class AttendanceQueries:
         results = []
         for user_id, name, email, student_level, student_batch_id, avg_decimal in query.all():
             if avg_decimal is not None:
-                hours   = int(avg_decimal)
-                minutes = int((avg_decimal - hours) * 60)
+                hours        = int(avg_decimal)
+                minutes      = int((avg_decimal - hours) * 60)
                 avg_time_str = f"{hours:02d}:{minutes:02d}"
             else:
                 avg_time_str = "N/A"
@@ -227,12 +293,13 @@ class AttendanceQueries:
     def attendance_percentage_per_student(level=None, days=30, batch_id=None):
         """
         Calculate attendance percentage per student.
-        Optimized to use range-based joins and efficient distinct day counting.
+        Holidays and batch exceptions are loaded from Redis cache — not queried
+        from the DB on every call. Cache is invalidated on any admin holiday write.
         """
         cutoff_date = (datetime.now() - timedelta(days=days)).date()
         today       = date.today()
 
-        batch = Batch.query.get(batch_id) if batch_id else None
+        batch         = Batch.query.get(batch_id) if batch_id else None
         current_level = batch.current_level if batch else level
 
         if batch and batch.level_started_at:
@@ -251,7 +318,7 @@ class AttendanceQueries:
         if current_level:
             first_scan_query = first_scan_query.filter(Attendance.student_level == current_level)
 
-        first_scan = first_scan_query.scalar()
+        first_scan      = first_scan_query.scalar()
         first_scan_date = first_scan.date() if first_scan else None
 
         candidates = [cutoff_date]
@@ -266,11 +333,14 @@ class AttendanceQueries:
             schedules = BatchSchedule.query.all()
             scheduled_weekdays = {s.weekday for s in schedules}
 
+        # ── Single cache read replaces two DB queries on every dashboard load ──
+        excluded_dates = _get_excluded_dates(batch_id, effective_start, today)
+
         total_days = 0
         if scheduled_weekdays:
             current = effective_start
             while current <= today:
-                if current.weekday() in scheduled_weekdays:
+                if current.weekday() in scheduled_weekdays and current not in excluded_dates:
                     total_days += 1
                 current += timedelta(days=1)
 
@@ -346,23 +416,17 @@ class AttendanceQueries:
                 'has_scanned_today':  bool(row[10])
             })
         return results
-        
+
     @staticmethod
     def students_below_threshold(threshold=80, level=None, days=30, batch_id=None):
         """
         Flag students below the given attendance threshold.
-        Excludes personal time from attendance count.
-        Only counts scans matching the student's current level (student_level column)
-        so promoted students' old level scans don't inflate their new level %.
-        Optionally filtered by student level and/or batch.
+        Delegates to attendance_percentage_per_student which handles
+        all caching and level-aware filtering internally.
         """
-        cutoff_date = datetime.now() - timedelta(days=days)
-
-        # total_days anchoring via level_started_at
         all_students = AttendanceQueries.attendance_percentage_per_student(
             level=level, days=days, batch_id=batch_id
         )
-
         return [s for s in all_students if s['attendance_pct'] < threshold]
 
     @staticmethod

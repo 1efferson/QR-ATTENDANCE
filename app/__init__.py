@@ -6,11 +6,13 @@ from flask_migrate import Migrate
 from flask_caching import Cache
 import logging
 from config import Config
+from flask_wtf.csrf import CSRFProtect
 
 db = SQLAlchemy()
 login_manager = LoginManager()
 migrate = Migrate()
 cache = Cache()
+csrf = CSRFProtect()
 celery = None
 
 
@@ -22,6 +24,7 @@ def create_app(config_class=Config):
     login_manager.init_app(app)
     migrate.init_app(app, db)
     cache.init_app(app)
+    csrf.init_app(app)
 
     login_manager.login_view = 'auth.login'
     login_manager.login_message_category = 'info'

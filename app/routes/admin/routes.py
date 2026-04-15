@@ -15,13 +15,15 @@ from flask_login import login_required, current_user
 from functools import wraps
 from sqlalchemy import func, and_
 from app import db
-from app.models import User, Batch, ApprovedStudent, Attendance, BatchSchedule
+from app.models import User, Batch, ApprovedStudent, Attendance, BatchSchedule, BatchException
 from datetime import datetime, timedelta
 from app.sheets_sync import create_sheet_tab, append_student_to_sheet
 import threading
 from . import admin_bp
 import logging
 from flask import current_app
+from datetime import date
+from app.instructor_queries import invalidate_excluded_dates_cache
 
 # Initialize logger for this module
 logger = logging.getLogger(__name__)
@@ -742,3 +744,105 @@ def create_instructor():
         return redirect(url_for('admin.dashboard'))
     
     return render_template('admin/create_instructor.html')
+
+
+# ── Global holidays ──────────────────────────────────────────────────────────
+
+@admin_bp.route('/holidays', methods=['GET'])
+@admin_required
+def list_holidays():
+    from app.models import Holiday, BatchException, Batch
+    holidays   = Holiday.query.order_by(Holiday.date).all()
+    exceptions = BatchException.query.order_by(BatchException.date).all()
+    batches    = Batch.query.filter_by(is_active=True).order_by(Batch.name).all()
+    return render_template('admin/holidays.html',
+                           holidays=holidays,
+                           exceptions=exceptions,
+                           batches=batches,
+                           today=date.today())
+
+
+@admin_bp.route('/holidays/add', methods=['POST'])
+@admin_required
+def add_holiday():
+    from app.models import Holiday
+    from datetime import date as date_type
+    name      = request.form.get('name', '').strip()
+    date_str  = request.form.get('date', '').strip()
+
+    if not name or not date_str:
+        flash('Name and date are required.', 'error')
+        return redirect(url_for('admin.list_holidays'))
+
+    try:
+        holiday_date = date_type.fromisoformat(date_str)
+    except ValueError:
+        flash('Invalid date format.', 'error')
+        return redirect(url_for('admin.list_holidays'))
+
+    existing = Holiday.query.filter_by(date=holiday_date).first()
+    if existing:
+        flash(f'A holiday already exists on {holiday_date}.', 'warning')
+        return redirect(url_for('admin.list_holidays'))
+
+    db.session.add(Holiday(name=name, date=holiday_date))
+    db.session.commit()
+    invalidate_excluded_dates_cache()
+    flash(f'Holiday "{name}" added for {holiday_date}.', 'success')
+    return redirect(url_for('admin.list_holidays'))
+
+
+@admin_bp.route('/holidays/<int:holiday_id>/delete', methods=['POST'])
+@admin_required
+def delete_holiday(holiday_id):
+    from app.models import Holiday
+    holiday = Holiday.query.get_or_404(holiday_id)
+    db.session.delete(holiday)
+    db.session.commit()
+    invalidate_excluded_dates_cache()
+    flash(f'Holiday "{holiday.name}" removed.', 'success')
+    return redirect(url_for('admin.list_holidays'))
+
+
+# ── Batch exceptions ─────────────────────────────────────────────────────────
+
+@admin_bp.route('/batch-exceptions/add', methods=['POST'])
+@admin_required
+def add_batch_exception():
+    from app.models import BatchException
+    from datetime import date as date_type
+    batch_id  = request.form.get('batch_id', type=int)
+    name      = request.form.get('name', '').strip()
+    date_str  = request.form.get('date', '').strip()
+
+    if not batch_id or not name or not date_str:
+        flash('Batch, reason, and date are required.', 'error')
+        return redirect(url_for('admin.list_holidays'))
+
+    try:
+        exc_date = date_type.fromisoformat(date_str)
+    except ValueError:
+        flash('Invalid date format.', 'error')
+        return redirect(url_for('admin.list_holidays'))
+
+    existing = BatchException.query.filter_by(batch_id=batch_id, date=exc_date).first()
+    if existing:
+        flash(f'An exception for this batch already exists on {exc_date}.', 'warning')
+        return redirect(url_for('admin.list_holidays'))
+
+    db.session.add(BatchException(batch_id=batch_id, name=name, date=exc_date))
+    db.session.commit()
+    invalidate_excluded_dates_cache()
+    flash(f'Batch exception added for {exc_date}.', 'success')
+    return redirect(url_for('admin.list_holidays'))
+
+
+@admin_bp.route('/batch-exceptions/<int:exception_id>/delete', methods=['POST'])
+@admin_required
+def delete_batch_exception(exception_id):
+    exc = BatchException.query.get_or_404(exception_id)
+    db.session.delete(exc)
+    db.session.commit()
+    invalidate_excluded_dates_cache()
+    flash('Batch exception removed.', 'success')
+    return redirect(url_for('admin.list_holidays'))

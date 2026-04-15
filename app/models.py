@@ -273,3 +273,56 @@ class BlockedAttempt(db.Model):
     reason         = db.Column(db.String(100), nullable=False)  # 'invalid_ip', 'invalid_qr', etc.
     timestamp      = db.Column(db.DateTime, default=datetime.utcnow)
     attempted_data = db.Column(db.JSON, nullable=True)
+
+
+
+
+# ============================================================================
+# MODEL: Holiday
+# ============================================================================
+class Holiday(db.Model):
+    """
+    Global holidays that affect all batches.
+    Admin sets these in advance. Absence scheduler skips all batches on these days.
+    Attendance % denominator excludes these dates.
+    """
+    __tablename__ = 'holidays'
+
+    id         = db.Column(db.Integer, primary_key=True)
+    name       = db.Column(db.String(100), nullable=False)
+    date       = db.Column(db.Date, nullable=False, unique=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index('ix_holidays_date', 'date'),
+    )
+
+    def __repr__(self):
+        return f'<Holiday {self.name} on {self.date}>'
+
+
+# ============================================================================
+# MODEL: BatchException
+# ============================================================================
+class BatchException(db.Model):
+    """
+    Batch-specific day off — tutor absent, room unavailable, etc.
+    Only affects the named batch. Absence scheduler skips that batch only.
+    Attendance % denominator for that batch excludes this date.
+    """
+    __tablename__ = 'batch_exceptions'
+
+    id         = db.Column(db.Integer, primary_key=True)
+    batch_id   = db.Column(db.Integer, db.ForeignKey('batches.id', name='fk_batch_exception_batch_id'), nullable=False)
+    name       = db.Column(db.String(100), nullable=False)   # e.g. "Tutor unavailable"
+    date       = db.Column(db.Date, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    batch = db.relationship('Batch', backref='exceptions', lazy=True)
+
+    __table_args__ = (
+        db.UniqueConstraint('batch_id', 'date', name='unique_batch_exception_date'),
+        Index('ix_batch_exceptions_batch_date', 'batch_id', 'date'),
+    )
+
+    def __repr__(self):
+        return f'<BatchException batch={self.batch_id} date={self.date} reason={self.name}>'

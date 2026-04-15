@@ -21,6 +21,10 @@ class Config:
             "pool_recycle": 1800,
         }
 
+      # CSRF
+    WTF_CSRF_ENABLED = True
+    WTF_CSRF_TIME_LIMIT = None 
+
     GOOGLE_SHEETS_CREDENTIALS_FILE = os.environ.get('GOOGLE_SHEETS_CREDENTIALS_FILE', 'credentials.json')
     GOOGLE_SHEET_ID = os.environ.get('GOOGLE_SHEET_ID')
     SHEETS_SPREADSHEET_NAME = "Facemark"
@@ -36,7 +40,7 @@ class Config:
     # Use SimpleCache locally if Redis isn't available
     _redis_available = bool(os.environ.get("REDIS_URL"))
     CACHE_TYPE = "RedisCache" if _redis_available else "SimpleCache"
-    CACHE_REDIS_URL = REDIS_URL
+    CACHE_REDIS_URL = REDIS_URL if _redis_available else None 
     CACHE_DEFAULT_TIMEOUT = 60
 
     CELERY_BROKER_URL = REDIS_URL

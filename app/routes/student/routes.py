@@ -1,6 +1,7 @@
 from flask import render_template, redirect, url_for, flash, request, jsonify, current_app
 from flask_login import login_required, current_user
 from . import student_bp
+from app import csrf
 from app import db
 from app.models import Attendance, BlockedAttempt, Batch, Absence
 from datetime import datetime
@@ -25,6 +26,7 @@ def scan():
     return render_template('student/scan.html')
 
 @student_bp.route('/mark-attendance', methods=['POST'])
+@csrf.exempt
 @login_required
 def mark_attendance():
     """
