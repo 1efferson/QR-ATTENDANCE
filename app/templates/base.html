@@ -34,7 +34,7 @@
                     <span class="text-xl font-bold text-indigo-600">QR-Attend</span>
                 </div>
 
-                <div class="flex items-center space-x-4">
+                <div class="flex items-center space-x-4 relative z-10000">
                 {% if current_user.is_authenticated %}
                     <span class="text-sm text-gray-500 hidden sm:block">
                         Hi, {{ current_user.name | title }}
