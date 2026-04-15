@@ -7,13 +7,12 @@ from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import not_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import select, not_
-
+from app import db
+from app.models import Batch, User, Attendance, Absence, Holiday, BatchException
 logger = logging.getLogger(__name__)
 
 
 def _run_absence_sync(force=False):
-    from app import db
-    from app.models import Batch, User, Attendance, Absence
 
     now = datetime.now()
 
@@ -27,12 +26,32 @@ def _run_absence_sync(force=False):
     today_start = datetime.combine(today, datetime.min.time())
     tomorrow_start = today_start + timedelta(days=1)
 
+    # Holiday guard: skip entirely if today is a global holiday
+    is_global_holiday = db.session.query(Holiday.id).filter(
+        Holiday.date == today
+    ).first()
+
+    if is_global_holiday:
+        logger.info("Skipping absence sync — global holiday today (%s).", today)
+        return {'skipped': True, 'reason': 'Global holiday'}
+
+
+    #  Fetch batch exceptions for today in one query
+    excepted_batch_ids = {
+        row.batch_id for row in
+        db.session.query(BatchException.batch_id).filter(
+            BatchException.date == today
+        ).all()
+    }
+    
+
     logger.info("=== Daily Sync started for %s ===", today)
 
     active_batches = Batch.query.filter_by(is_active=True).all()
     batches_today = [
         b for b in active_batches
         if any(s.weekday == today_weekday for s in b.schedules)
+        and b.id not in excepted_batch_ids   # skip excepted batches
     ]
 
     if not batches_today:

@@ -26,7 +26,7 @@
     <!-- Toast Container -->
     <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
-    <nav class="bg-white border-b border-gray-200">
+    <nav class="bg-white border-b border-gray-200 relative z-40">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
 
@@ -34,7 +34,7 @@
                     <span class="text-xl font-bold text-indigo-600">QR-Attend</span>
                 </div>
 
-                <div class="flex items-center space-x-4">
+                <div class="flex items-center space-x-4 relative z-10000">
                 {% if current_user.is_authenticated %}
                     <span class="text-sm text-gray-500 hidden sm:block">
                         Hi, {{ current_user.name | title }}
@@ -48,12 +48,12 @@
                     {% endif %}
                     <div class="relative text-left inline-block {% if current_user.role == 'student' and request.blueprint == 'student' %}student-nav-settings{% endif %}">
                         <button id="settingsMenuButton" class="p-2 text-gray-500 hover:text-indigo-600 hover:bg-gray-100 rounded-full transition-colors focus:outline-none">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                             </svg>
                         </button>
-
+                       
                         <div id="settingsDropdown" class="hidden absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-xl py-2 z-50">
                             <div class="px-4 py-2 border-b border-gray-100 sm:hidden">
                                 <p class="text-xs text-gray-400 uppercase font-semibold">User</p>
@@ -88,125 +88,93 @@
     </main>
 
     <!-- Flash messages — serialised as a single JSON blob, no Jinja inside JS -->
-    <script>
-        window._flashMessages = {{ get_flashed_messages(with_categories=true) | tojson }};
-    </script>
+<script>
+    window._flashMessages = {{ get_flashed_messages(with_categories=true) | tojson }};
+</script>
 
-    <script>
-        const DURATION = 5000; // ms before auto-dismiss
+<script>
+document.addEventListener('DOMContentLoaded', () => {
 
-        const ICONS = {
-            success: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
-            error:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
-            warning: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
-            info:    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
-        };
+    // ── Toast System ──────────────────────────────────────────────────────
+    const DURATION = 5000;
 
-        const TITLES = {
-            success: 'Success',
-            error:   'Error',
-            warning: 'Warning',
-            info:    'Info',
-        };
+    const ICONS = {
+        success: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+        error:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+        warning: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+        info:    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+    };
 
-        function resolveType(category) {
-            if (category === 'danger') return 'error';
-            if (['success', 'error', 'warning', 'info'].includes(category)) return category;
-            return 'info'; // fallback for 'message', 'default', etc.
-        }
+    const TITLES = { success: 'Success', error: 'Error', warning: 'Warning', info: 'Info' };
 
-        function showToast({ category, message }) {
-            const type = resolveType(category);
-            const container = document.getElementById('toast-container');
+    function resolveType(category) {
+        if (category === 'danger') return 'error';
+        if (['success', 'error', 'warning', 'info'].includes(category)) return category;
+        return 'info';
+    }
 
-            const toast = document.createElement('div');
-            toast.className = `toast toast-${type}`;
-            toast.setAttribute('role', 'alert');
+    function dismiss(toast) {
+        toast.classList.remove('show');
+        toast.classList.add('hide');
+        toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+    }
 
-            toast.innerHTML = `
-                <div class="toast-icon">${ICONS[type]}</div>
-                <div class="toast-body">
-                    <div class="toast-title">${TITLES[type]}</div>
-                    <div class="toast-message">${message}</div>
-                </div>
-                <button class="toast-close" aria-label="Dismiss">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                </button>
-                <div class="toast-progress" style="animation-duration: ${DURATION}ms;"></div>
-            `;
+    function showToast({ category, message }) {
+        const type      = resolveType(category);
+        const container = document.getElementById('toast-container');
+        const toast     = document.createElement('div');
 
-            container.appendChild(toast);
+        toast.className = `toast toast-${type}`;
+        toast.setAttribute('role', 'alert');
+        toast.innerHTML = `
+            <div class="toast-icon">${ICONS[type]}</div>
+            <div class="toast-body">
+                <div class="toast-title">${TITLES[type]}</div>
+                <div class="toast-message">${message}</div>
+            </div>
+            <button class="toast-close" aria-label="Dismiss">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+            <div class="toast-progress" style="animation-duration: ${DURATION}ms;"></div>
+        `;
 
-            // Trigger slide-in on next frame
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => toast.classList.add('show'));
-            });
+        container.appendChild(toast);
+        requestAnimationFrame(() => requestAnimationFrame(() => toast.classList.add('show')));
 
-            // Auto-dismiss
-            const timer = setTimeout(() => dismiss(toast), DURATION);
-
-            // Manual close
-            toast.querySelector('.toast-close').addEventListener('click', () => {
-                clearTimeout(timer);
-                dismiss(toast);
-            });
-        }
-
-        function dismiss(toast) {
-            toast.classList.remove('show');
-            toast.classList.add('hide');
-            toast.addEventListener('transitionend', () => toast.remove(), { once: true });
-        }
-
-        // Destructure [category, message] tuples from Flask's tojson output
-        (window._flashMessages || []).forEach(([category, message], i) => {
-            setTimeout(() => showToast({ category, message }), i * 150);
+        const timer = setTimeout(() => dismiss(toast), DURATION);
+        toast.querySelector('.toast-close').addEventListener('click', () => {
+            clearTimeout(timer);
+            dismiss(toast);
         });
+    }
 
-        // Optional: expose globally so you can trigger toasts from other scripts
-        window.showToast = showToast;
+    // Expose globally for use in other scripts
+    window.showToast = showToast;
 
-        // Register service worker for PWA support
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
-                    .catch(err => console.error('SW registration failed:', err));
-            });
-        }
+    // Fire any flash messages from Flask
+    (window._flashMessages || []).forEach(([category, message], i) => {
+        setTimeout(() => showToast({ category, message }), i * 150);
+    });
 
-        // iOS install hint — Safari doesn't show an install banner automatically
-        const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
-        const isInStandaloneMode = window.navigator.standalone;
-        if (isIOS && !isInStandaloneMode) {
-            console.info('iOS detected: user can install via Share → Add to Home Screen');
-        }
-    </script>
 
-    <script>
-    // ── Generic Modal Manager ─────────────────────────────────────────────
-    // Usage: openModal('myModalId') / closeModal('myModalId')
-    // Any modal just needs: id, hidden class, flex for centering,
-    // and an inner card with id="{modalId}Card" for the scale animation.
-
-    function openModal(id) {
+    // ── Modal Manager ─────────────────────────────────────────────────────
+    window.openModal = function(id) {
         const modal = document.getElementById(id);
         if (!modal) return;
         modal.classList.remove('hidden');
         modal.classList.add('flex');
         const card = document.getElementById(id + 'Card');
         if (card) {
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    card.classList.remove('scale-95', 'opacity-0');
-                    card.classList.add('scale-100', 'opacity-100');
-                });
-            });
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                card.classList.remove('scale-95', 'opacity-0');
+                card.classList.add('scale-100', 'opacity-100');
+            }));
         }
-    }
+    };
 
-    function closeModal(id) {
+    window.closeModal = function(id) {
         const modal = document.getElementById(id);
         if (!modal) return;
         const card = document.getElementById(id + 'Card');
@@ -221,50 +189,65 @@
             modal.classList.add('hidden');
             modal.classList.remove('flex');
         }
-    }
+    };
 
-    // Backdrop click and Escape key — works for ALL modals on any page
-    document.addEventListener('click', function (e) {
+    // Close modal when clicking the backdrop
+    document.addEventListener('click', (e) => {
         if (e.target.classList.contains('modal-backdrop')) {
-            closeModal(e.target.id);
-        }
-    });
-
-    document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape') {
-            document.querySelectorAll('.modal-backdrop:not(.hidden)').forEach(m => {
-                closeModal(m.id);
-            });
+            window.closeModal(e.target.id);
         }
     });
 
 
-     // Nav Bar Settings(Gear) button
-    document.addEventListener('DOMContentLoaded', () => {
-    const btn = document.getElementById('settingsMenuButton');
+    // ── Settings Gear Dropdown ────────────────────────────────────────────
+    const btn      = document.getElementById('settingsMenuButton');
     const dropdown = document.getElementById('settingsDropdown');
 
     if (btn && dropdown) {
-        // Toggle dropdown on click
+        // Toggle on gear click — stopPropagation prevents the document
+        // click listener below from immediately closing it again
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             dropdown.classList.toggle('hidden');
         });
 
-        // Close dropdown when clicking anywhere else
+        // Close when clicking anywhere outside the button or dropdown
         document.addEventListener('click', (e) => {
-            if (!dropdown.contains(e.target) && !btn.contains(e.target)) {
-                dropdown.classList.add('hidden');
-            }
-        });
-
-        // Close dropdown on Escape key
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
+            if (!btn.contains(e.target) && !dropdown.contains(e.target)) {
                 dropdown.classList.add('hidden');
             }
         });
     }
+
+    // ── Single Escape handler (modals + dropdown) ─────────────────────────
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (dropdown) dropdown.classList.add('hidden');
+        document.querySelectorAll('.modal-backdrop:not(.hidden)').forEach(m => {
+            window.closeModal(m.id);
+        });
+    });
+
+
+    // ── PWA / Service Worker ──────────────────────────────────────────────
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js')
+            .catch(err => console.error('SW registration failed:', err));
+    }
+
+    const isIOS            = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
+    const isInStandaloneMode = window.navigator.standalone;
+    if (isIOS && !isInStandaloneMode) {
+        console.info('iOS detected: user can install via Share → Add to Home Screen');
+    }
+    // Re-attach listeners when browser restores page from back/forward cache
+    window.addEventListener('pageshow', (e) => {
+    if (e.persisted) {
+        // Page was restored from bfcache — reload to get fresh CSRF token
+        window.location.reload();
+    }
+});
+
 });
 </script>
 

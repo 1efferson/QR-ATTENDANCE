@@ -1,4 +1,5 @@
 /* A small message that pops up briefly and disappears automatically, without interrupting the user. */
+
 /* Toast container */
 #toast-container {
     position: fixed;
@@ -8,12 +9,14 @@
     display: flex;
     flex-direction: column;
     gap: 0.625rem;
-    pointer-events: none;
+    /* This allows clicks to pass through the invisible container to your buttons below */
+    pointer-events: none; 
 }
 
 /* Individual toast */
 .toast {
-    pointer-events: all;
+    /* This ensures users can still click the "X" on the actual toasts */
+    pointer-events: auto; 
     display: flex;
     align-items: flex-start;
     gap: 0.75rem;
