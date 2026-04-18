@@ -1,152 +1,177 @@
-from flask import render_template, redirect, url_for, flash, request
-from flask_login import login_user, logout_user, current_user, login_required
+from flask import Blueprint, render_template, redirect, url_for, flash, request, session
+from flask_login import login_user, logout_user, login_required, current_user
+from flask_wtf import FlaskForm
+from wtforms import StringField, PasswordField, SubmitField
+from wtforms.validators import DataRequired, Email
+from sqlalchemy import func
+from app import db, oauth
+from app.models import User, ApprovedStudent, Batch
 from datetime import datetime
 import logging
 
 from . import auth_bp
-from app import db
-from app.forms import LoginForm, RegistrationForm
-from app.services.registration_service import get_active_batches, register_student
-from app.models import User
-
-#  No top-level sheet_tasks import — loaded lazily below
-
 logger = logging.getLogger(__name__)
 
 
-@auth_bp.route("/register", methods=["GET", "POST"])
-def register():
-    if current_user.is_authenticated:
-        return _redirect_authenticated(current_user)
 
-    active_batches = get_active_batches()
-    form = RegistrationForm()
-    form.batch.choices = [(b.id, b.name) for b in active_batches]
+# ── Forms ─────────────────────────────────────────────────────────────────────
 
-    if not form.validate_on_submit():
-        return render_template("auth/register.html", form=form, batches=active_batches)
-
-    result = register_student(
-        email_input=form.email.data.strip().lower(),
-        batch_id=form.batch.data,
-        level_input=form.level.data,
-        password=form.password.data,
-    )
-
-    if not result.success:
-        flash(result.error, result.error_type)
-        redirect_target = (
-            url_for("auth.login")
-            if result.error_type == "info"
-            else url_for("auth.register")
-        )
-        return redirect(redirect_target)
-
-    # student is saved with is_synced_to_sheets=False.
-    # Celery Beat picks them up every 5 minutes and pushes the whole
-    # batch in 2 API calls. Registration response is now pure DB only.
-    flash(f"Registration successful! Welcome, {result.user.name}.", "success")
-    return redirect(url_for("auth.login"))
+class LoginForm(FlaskForm):
+    email    = StringField('Email',    validators=[DataRequired(), Email()])
+    password = PasswordField('Password', validators=[DataRequired()])
+    submit   = SubmitField('Sign In')
 
 
-def _redirect_authenticated(user):
-    destinations = {
-        "instructor": "instructor.dashboard",
-        "admin":      "admin.dashboard",
-    }
-    return redirect(url_for(destinations.get(user.role, "student.scan")))
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
-# LOGIN ROUTE
+def _redirect_for(user):
+    """Send each role to their home dashboard."""
+    if user.role == 'admin':
+        return url_for('admin.dashboard')
+    if user.role == 'instructor':
+        return url_for('instructor.dashboard')
+    return url_for('student.scan')
+
+
+# ── Password login (admin, instructor, legacy students) ───────────────────────
+
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
-    """Login route"""
     if current_user.is_authenticated:
-        # Redirect based on role
-        if current_user.role == 'instructor':
-            return redirect(url_for('instructor.dashboard'))
-        elif current_user.role == 'admin':
-            return redirect(url_for('admin.dashboard'))
-        else:  # student
-            return redirect(url_for('student.scan'))
-        
+        return redirect(_redirect_for(current_user))
+
     form = LoginForm()
     if form.validate_on_submit():
-        user = User.query.filter_by(email=form.email.data).first()
+        user = User.query.filter(
+            func.lower(User.email) == form.email.data.strip().lower()
+        ).first()
+
         if user and user.check_password(form.password.data):
             login_user(user)
-            flash('Login Successful!', 'success')
-            
-            # Check for 'next' parameter (if they were redirected to login)
             next_page = request.args.get('next')
-            
-            # Role-based redirect
-            if user.role == 'instructor':
-                return redirect(next_page) if next_page else redirect(url_for('instructor.dashboard'))
-            elif user.role == 'admin':
-                return redirect(next_page) if next_page else redirect(url_for('admin.dashboard'))
-            else:  # student
-                return redirect(next_page) if next_page else redirect(url_for('student.scan'))
-        else:
-            flash('Login Unsuccessful. Please check email and password', 'error')
-            
+            flash(f'Welcome back, {user.name}!', 'success')
+            return redirect(next_page or _redirect_for(user))
+
+        flash('Invalid email or password.', 'error')
+
     return render_template('auth/login.html', form=form)
 
+
+# ── Register page (just shows the Google button now) ─────────────────────────
+
+@auth_bp.route('/register')
+def register():
+    if current_user.is_authenticated:
+        return redirect(_redirect_for(current_user))
+    return render_template('auth/register.html')
+
+
+# ── Google OAuth — Step 1: redirect to Google ────────────────────────────────
+
+@auth_bp.route('/google/login')
+def google_login():
+    # Stash the 'next' URL so we can honour it after the callback
+    session['oauth_next'] = request.args.get('next', '')
+    redirect_uri = url_for('auth.google_callback', _external=True)
+    return oauth.google.authorize_redirect(redirect_uri)
+
+
+# ── Google OAuth — Step 2: handle the return ─────────────────────────────────
+
+@auth_bp.route('/google/callback')
+def google_callback():
+    try:
+        token     = oauth.google.authorize_access_token()
+        user_info = token.get('userinfo')
+    except Exception as e:
+        logger.error(f"Google OAuth callback error: {e}")
+        flash('Google sign-in failed. Please try again.', 'error')
+        return redirect(url_for('auth.login'))
+
+    if not user_info or not user_info.get('email'):
+        flash('Could not get your email from Google. Please try again.', 'error')
+        return redirect(url_for('auth.login'))
+
+    email     = user_info['email'].strip().lower()
+    google_id = user_info.get('sub')      # Google's permanent unique user ID
+
+    # ── Case 1: user already exists → just log them in ───────────────────────
+    user = User.query.filter(func.lower(User.email) == email).first()
+
+    if user:
+        if not user.google_id:
+            # First time using Google — silently link their account
+            user.google_id = google_id
+            db.session.commit()
+            logger.info(f"Linked Google ID to existing account: {email}")
+
+        login_user(user)
+        flash(f'Welcome back, {user.name}!', 'success')
+        next_url = session.pop('oauth_next', None)
+        return redirect(next_url or _redirect_for(user))
+
+    # ── Case 2: new user — check the approved list ────────────────────────────
+    approved = ApprovedStudent.query.filter(
+        func.lower(ApprovedStudent.email) == email,
+        ApprovedStudent.is_registered == False
+    ).first()
+
+    if not approved:
+        # Nicer error: distinguish "never added" from "already registered"
+        already_registered = ApprovedStudent.query.filter(
+            func.lower(ApprovedStudent.email) == email,
+            ApprovedStudent.is_registered == True
+        ).first()
+
+        if already_registered:
+            flash(
+                'This email is already registered. Please sign in instead.',
+                'warning'
+            )
+        else:
+            flash(
+                'Your Google email is not on the approved list. '
+                'Ask your admin to add you before registering.',
+                'error'
+            )
+        return redirect(url_for('auth.login'))
+
+    # ── Auto-create the student account ──────────────────────────────────────
+    batch = Batch.query.get(approved.batch_id) if approved.batch_id else None
+
+    new_user = User(
+        email     = email,
+        name      = approved.name,                          # Admin's approved name
+        role      = 'student',
+        batch_id  = approved.batch_id,
+        level     = batch.current_level if batch else None, # Inherit from batch
+        google_id = google_id,
+        # password_hash intentionally left None — Google-only account
+    )
+    db.session.add(new_user)
+    db.session.flush()   # Populate new_user.id before updating approved record
+
+    # Mark the approved slot as taken
+    approved.is_registered      = True
+    approved.registered_user_id = new_user.id
+    approved.registered_at      = datetime.utcnow()
+    db.session.commit()
+
+    login_user(new_user)
+    logger.info(
+        f"New student registered via Google: {email} "
+        f"→ Batch '{batch.name if batch else 'None'}' / {new_user.level}"
+    )
+    flash(f'Welcome, {new_user.name}! Your account has been created.', 'success')
+    next_url = session.pop('oauth_next', None)
+    return redirect(next_url or url_for('student.scan'))
+
+
+# ── Logout ────────────────────────────────────────────────────────────────────
 
 @auth_bp.route('/logout')
 @login_required
 def logout():
-    """Logout route"""
     logout_user()
-    flash('You have been logged out.', 'info')
+    flash('You have been signed out.', 'info')
     return redirect(url_for('auth.login'))
-
-
-@auth_bp.route('/change-password', methods=['GET', 'POST'])
-@login_required
-def change_password():
-    """Allow any logged-in user to change their password"""
-    if request.method == 'POST':
-        current_password = request.form.get('current_password', '').strip()
-        new_password = request.form.get('new_password', '').strip()
-        confirm_password = request.form.get('confirm_password', '').strip()
-        
-        # Validation
-        if not all([current_password, new_password, confirm_password]):
-            flash('All fields are required', 'error')
-            return redirect(url_for('auth.change_password'))
-        
-        # Check current password
-        if not current_user.check_password(current_password):
-            flash('Current password is incorrect', 'error')
-            return redirect(url_for('auth.change_password'))
-        
-        # Check new passwords match
-        if new_password != confirm_password:
-            flash('New passwords do not match', 'error')
-            return redirect(url_for('auth.change_password'))
-        
-        # Check password length
-        if len(new_password) < 6:
-            flash('New password must be at least 6 characters', 'error')
-            return redirect(url_for('auth.change_password'))
-        
-        # Check new password is different from current
-        if current_password == new_password:
-            flash('New password must be different from current password', 'error')
-            return redirect(url_for('auth.change_password'))
-        
-        # Update password
-        current_user.set_password(new_password)
-        db.session.commit()
-        
-        flash('✓ Password changed successfully!', 'success')
-        
-        # Redirect based on role
-        if current_user.role == 'admin':
-            return redirect(url_for('admin.dashboard'))
-        elif current_user.role == 'instructor':
-            return redirect(url_for('instructor.dashboard'))
-        else:
-            return redirect(url_for('student.scan'))
-    
-    return render_template('auth/change_password.html')

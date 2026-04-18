@@ -7,12 +7,14 @@ from flask_caching import Cache
 import logging
 from config import Config
 from flask_wtf.csrf import CSRFProtect
+from authlib.integrations.flask_client import OAuth
 
 db = SQLAlchemy()
 login_manager = LoginManager()
 migrate = Migrate()
 cache = Cache()
 csrf = CSRFProtect()
+oauth = OAuth()
 celery = None
 
 
@@ -25,6 +27,16 @@ def create_app(config_class=Config):
     migrate.init_app(app, db)
     cache.init_app(app)
     csrf.init_app(app)
+    oauth.init_app(app)
+
+    # Registering Google as an OAuth provider 
+    oauth.register(
+        name='google',
+        client_id=app.config.get('GOOGLE_CLIENT_ID'),
+        client_secret=app.config.get('GOOGLE_CLIENT_SECRET'),
+        server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+        client_kwargs={'scope': 'openid email profile'},
+    )
 
     login_manager.login_view = 'auth.login'
     login_manager.login_message_category = 'info'

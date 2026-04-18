@@ -29,17 +29,9 @@
   <div class="bar-btn-wrap">
 
     <!-- Dropdown (opens upward) -->
-    <div id="barSettingsDropdown" class="bar-dropdown" aria-hidden="true">
-      <a href="{{ url_for('auth.change_password') }}" class="bar-dropdown-item">
-        <svg viewBox="0 0 24 24">
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-        </svg>
-        Change Password
-      </a>
-      <hr class="bar-dropdown-divider">
+      <div id="barSettingsDropdown" class="bar-dropdown" aria-hidden="true">
       <a href="{{ url_for('auth.logout') }}" class="bar-dropdown-item danger">
-        <svg viewBox="0 0 24 24">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
           <polyline points="16 17 21 12 16 7"/>
           <line x1="21" y1="12" x2="9" y2="12"/>
@@ -65,7 +57,7 @@
 </nav>
 
 <style>
-  /* Wrapper needed to anchor the dropdown above the button */
+  /* 1. Layout Wrapper */
   .bar-btn-wrap {
     position: relative;
     display: flex;
@@ -73,10 +65,19 @@
     justify-content: center;
   }
 
-  /* Dropdown panel — hidden by default, slides up on open */
+  /* 2. Buttons & Touch Interaction */
+  .bar-btn, 
+  .bar-btn-wrap button {
+    touch-action: manipulation; /* Removes 300ms tap delay */
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent; /* Clean tap on mobile */
+    /* Add your other existing button styles here */
+  }
+
+  /* 3. The Dropdown Panel */
   .bar-dropdown {
     position: absolute;
-    bottom: calc(100% + 10px); /* sit above the button */
+    bottom: calc(100% + 10px); /* Sits above the bar */
     right: 0;
     min-width: 176px;
     background: #ffffff;
@@ -86,20 +87,25 @@
     overflow: hidden;
     z-index: 200;
 
-    /* Hidden state */
+    /* Hidden State - Starts lower and slightly smaller */
     opacity: 0;
-    transform: translateY(8px) scale(0.97);
+    transform: translateY(12px) scale(0.95);
     pointer-events: none;
-    transition: opacity 0.18s ease, transform 0.18s ease;
+    
+    /* Optimized Transition for 'Snappiness' */
+    transition: 
+      opacity 0.12s ease-out, 
+      transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1); /* Tiny 'pop' effect */
   }
 
-  /* Open state — toggled via JS */
+  /* 4. Open State */
   .bar-dropdown.open {
     opacity: 1;
     transform: translateY(0) scale(1);
     pointer-events: auto;
   }
 
+  /* 5. Dropdown Items */
   .bar-dropdown-item {
     display: flex;
     align-items: center;
@@ -111,17 +117,34 @@
     text-decoration: none;
     transition: background 0.12s, color 0.12s;
   }
-  .bar-dropdown-item:hover       { background: #f0f0ff; color: #6366f1; }
-  .bar-dropdown-item.danger      { color: #dc2626; }
-  .bar-dropdown-item.danger:hover{ background: #fef2f2; color: #b91c1c; }
 
+  .bar-dropdown-item:hover { 
+    background: #f0f0ff; 
+    color: #6366f1; 
+  }
+
+  .bar-dropdown-item.danger { 
+    color: #dc2626; 
+  }
+
+  .bar-dropdown-item.danger:hover { 
+    background: #fef2f2; 
+    color: #b91c1c; 
+  }
+
+  /* 6. Icons inside items */
   .bar-dropdown-item svg {
-    width: 16px; height: 16px;
-    stroke: currentColor; fill: none;
-    stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+    width: 16px; 
+    height: 16px;
+    stroke: currentColor; 
+    fill: none;
+    stroke-width: 1.8; 
+    stroke-linecap: round; 
+    stroke-linejoin: round;
     flex-shrink: 0;
   }
 
+  /* 7. Divider */
   .bar-dropdown-divider {
     margin: 0;
     border: none;
