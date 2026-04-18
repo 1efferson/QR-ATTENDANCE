@@ -29,6 +29,7 @@
             <h2 class="text-xl font-semibold mb-4">Add Single Student</h2>
 
             <form method="POST" action="{{ url_for('admin.add_approved_student', batch_id=batch.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <div class="mb-4">
                     <label class="block text-sm font-medium mb-2">
                         Student Name <span class="text-red-500">*</span>
@@ -61,6 +62,7 @@
             <h2 class="text-xl font-semibold mb-4">Bulk Upload Students</h2>
 
             <form method="POST" action="{{ url_for('admin.bulk_upload_students', batch_id=batch.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <textarea name="student_data" rows="8" required
                     placeholder="John Doe, john@example.com&#10;Jane Smith, jane@example.com"
                     class="w-full px-4 py-2 border border-gray-300 rounded-lg font-mono text-sm"></textarea>
@@ -203,6 +205,7 @@
             </button>
 
             <form id="deleteApprovedStudentForm" method="POST" action="" class="flex-1">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <button class="w-full bg-red-600 text-white py-2 rounded-lg">
                     Yes, Remove
                 </button>

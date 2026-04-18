@@ -111,7 +111,7 @@
 
 {% if batch.current_level != 'alumni' %}
 {# Promote card — visible for beginner, intermediate, advanced #}
-<div class="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-lg p-6 mb-8">
+<div class="bg-linear-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-lg p-6 mb-8">
     <div class="flex items-center justify-between">
         <div class="flex items-center">
             <div class="bg-indigo-100 rounded-full p-3 mr-4">
@@ -168,7 +168,7 @@
                 transform transition-all duration-200 scale-95 opacity-0">
 
         <div class="flex items-center gap-4 mb-4">
-            <div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
+            <div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
                 <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
                 </svg>
@@ -216,6 +216,7 @@
                 Cancel
             </button>
             <form method="POST" action="{{ url_for('admin.promote_batch', batch_id=batch.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <button type="submit"
                         class="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition">
                     Yes, Promote Now
@@ -228,7 +229,7 @@
 
 {# ── UNPROMOTE CARD (visible for intermediate, advanced, alumni) ── #}
 {% if batch.current_level != 'beginner' %}
-<div class="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-6 mb-8">
+<div class="bg-linear-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-6 mb-8">
     <div class="flex items-center justify-between">
         <div class="flex items-center">
             <div class="bg-amber-100 rounded-full p-3 mr-4">
@@ -266,7 +267,7 @@
                 transform transition-all duration-200 scale-95 opacity-0">
 
         <div class="flex items-center gap-4 mb-4">
-            <div class="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+            <div class="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
                 <svg class="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                 </svg>
@@ -290,6 +291,7 @@
         </p>
 
         <form method="POST" action="{{ url_for('admin.unpromote_batch', batch_id=batch.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div class="flex justify-end gap-3 mt-6">
                 <button type="button" onclick="closeModal('unpromoteModal')"
                         class="px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition">

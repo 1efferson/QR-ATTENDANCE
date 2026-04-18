@@ -18,6 +18,7 @@
     <!-- Form -->
     <div class="bg-white rounded-lg shadow p-6">
         <form method="POST" action="{{ url_for('admin.create_instructor') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <!-- Full Name -->
             <div class="mb-6">
                 <label for="name" class="block text-sm font-medium text-gray-700 mb-2">
@@ -59,7 +60,7 @@
             <!-- Info Box -->
             <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                 <div class="flex">
-                    <svg class="w-5 h-5 text-blue-600 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-5 h-5 text-blue-600 mr-3 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                     </svg>
                     <div class="text-sm text-blue-800">

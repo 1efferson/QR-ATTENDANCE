@@ -134,11 +134,11 @@
          class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden
                 transform transition-all duration-200 scale-95 opacity-0">
 
-        <div class="h-1.5 bg-gradient-to-r from-yellow-400 to-orange-500"></div>
+        <div class="h-1.5 bg-linear-to-r from-yellow-400 to-orange-500"></div>
 
         <div class="p-6">
             <div class="flex items-start gap-4 mb-5">
-                <div class="flex-shrink-0 w-11 h-11 rounded-full bg-yellow-100 flex items-center justify-center">
+                <div class="shrink-0 w-11 h-11 rounded-full bg-yellow-100 flex items-center justify-center">
                     <svg class="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                               d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
@@ -152,19 +152,19 @@
 
             <ul class="space-y-2.5 mb-6">
                 <li class="flex items-start gap-2.5 text-sm text-gray-700">
-                    <svg class="w-4 h-4 text-yellow-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4 text-yellow-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                     </svg>
                     All students will be <span class="font-medium text-gray-900 mx-1">unassigned</span> from this batch
                 </li>
                 <li class="flex items-start gap-2.5 text-sm text-gray-700">
-                    <svg class="w-4 h-4 text-yellow-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4 text-yellow-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                     </svg>
                     Batch will be <span class="font-medium text-gray-900 mx-1">hidden from registration</span>
                 </li>
                 <li class="flex items-start gap-2.5 text-sm text-gray-700">
-                    <svg class="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4 text-amber-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                     </svg>
                     Attendance history and records are <span class="font-medium text-gray-900 mx-1">preserved</span>
@@ -177,12 +177,13 @@
                     Cancel
                 </button>
                 <form id="deactivateBatchForm" method="POST" action="" class="flex-1">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <button type="submit"
                         class="w-full px-4 py-2.5 bg-yellow-500 text-white font-medium rounded-lg
-                               hover:bg-yellow-600 transition text-sm flex items-center justify-center gap-2">
+                            hover:bg-yellow-600 transition text-sm flex items-center justify-center gap-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                  d="M18.364 5.636l-12.728 12.728"/>
+                                d="M18.364 5.636l-12.728 12.728"/>
                         </svg>
                         Yes, Deactivate
                     </button>
@@ -202,11 +203,11 @@
          class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden
                 transform transition-all duration-200 scale-95 opacity-0">
 
-        <div class="h-1.5 bg-gradient-to-r from-red-500 to-rose-700"></div>
+        <div class="h-1.5 bg-linear-to-r from-red-500 to-rose-700"></div>
 
         <div class="p-6">
             <div class="flex items-start gap-4 mb-5">
-                <div class="flex-shrink-0 w-11 h-11 rounded-full bg-red-100 flex items-center justify-center">
+                <div class="shrink-0 w-11 h-11 rounded-full bg-red-100 flex items-center justify-center">
                     <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                               d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
@@ -220,19 +221,19 @@
 
             <ul class="space-y-2.5 mb-6">
                 <li class="flex items-start gap-2.5 text-sm text-gray-700">
-                    <svg class="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4 text-red-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                     </svg>
                     Batch schedule, approved list, and <span class="font-medium text-gray-900 mx-1">all attendance records</span> deleted
                 </li>
                 <li class="flex items-start gap-2.5 text-sm text-gray-700">
-                    <svg class="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4 text-red-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                     </svg>
                     Student accounts are <span class="font-medium text-gray-900 mx-1">kept</span> but become unassigned
                 </li>
                 <li class="flex items-start gap-2.5 text-sm text-gray-700">
-                    <svg class="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4 text-red-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                     </svg>
                     The batch record is <span class="font-medium text-gray-900 mx-1">permanently removed</span> from the database
@@ -245,12 +246,13 @@
                     Cancel
                 </button>
                 <form id="permanentDeleteBatchForm" method="POST" action="" class="flex-1">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <button type="submit"
                         class="w-full px-4 py-2.5 bg-red-600 text-white font-medium rounded-lg
-                               hover:bg-red-700 transition text-sm flex items-center justify-center gap-2">
+                            hover:bg-red-700 transition text-sm flex items-center justify-center gap-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                         </svg>
                         Yes, Delete Everything
                     </button>
