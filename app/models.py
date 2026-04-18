@@ -159,7 +159,8 @@ class User(UserMixin, db.Model):
 
     id            = db.Column(db.Integer, primary_key=True)
     email         = db.Column(db.String(120), unique=True, nullable=False, index=True)
-    password_hash = db.Column(db.String(256), nullable=False)
+    password_hash = db.Column(db.String(256), nullable=True)
+    google_id     = db.Column(db.String(100), unique=True, nullable=True, index=True)
     name          = db.Column(db.String(100), nullable=False)
     level         = db.Column(db.String(50), nullable=True)
     role          = db.Column(db.String(20), default='student', nullable=False)
@@ -185,6 +186,8 @@ class User(UserMixin, db.Model):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
+        if not self.password_hash:
+            return False
         return check_password_hash(self.password_hash, password)
 
     def __repr__(self):

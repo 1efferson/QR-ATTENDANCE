@@ -29,6 +29,9 @@ class Config:
     GOOGLE_SHEET_ID = os.environ.get('GOOGLE_SHEET_ID')
     SHEETS_SPREADSHEET_NAME = "Facemark"
 
+    GOOGLE_CLIENT_ID     = os.environ.get('GOOGLE_CLIENT_ID')
+    GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
+
     SERVER_NAME = None
 
     SCHOOL_IP_RANGES = os.environ.get('SCHOOL_IP_RANGES', '').split(',')

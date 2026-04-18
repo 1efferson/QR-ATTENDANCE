@@ -243,6 +243,7 @@
             </div>
             <!-- Manual trigger -->
                 <form method="POST" action="{{ url_for('instructor.run_absence_check') }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="batch_id" value="{{ selected_batch.id if selected_batch else '' }}">
                     <input type="hidden" name="level"    value="{{ level or '' }}">
                     <input type="hidden" name="days"     value="{{ days }}">

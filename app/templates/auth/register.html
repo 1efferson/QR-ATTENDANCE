@@ -1,115 +1,36 @@
 {% extends "base.html" %}
-{% block title %}Create Account{% endblock %}
+{% block title %}Register{% endblock %}
 
 {% block content %}
 <div class="max-w-md mx-auto mt-10 bg-white p-8 rounded-xl shadow-lg border border-gray-100">
-    <h2 class="text-3xl font-extrabold text-gray-900 text-center mb-6">Register</h2>
-    
-    <!-- Info Box -->
-    <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6">
-        <p class="text-xs text-blue-800">
-            <strong>Note:</strong> Your name must be on the approved list for your selected batch. Contact admin if you're not sure.
+    <h2 class="text-3xl font-extrabold text-gray-900 text-center mb-2">Create Account</h2>
+    <p class="text-center text-sm text-gray-500 mb-8">Students register using Google</p>
+
+    <!-- Requirement notice -->
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <p class="text-sm text-blue-800">
+            <strong>Before you register:</strong> your Gmail address must be added to your
+            batch list by an admin. If you haven't been added yet, contact your instructor.
         </p>
     </div>
 
-    <form method="POST">
-        {{ form.hidden_tag() }}
-        <div class="space-y-4">
-            <!-- Full Name -->
-            <div>
-                <label class="block text-sm font-medium text-gray-700">Full Name</label>
-                {{ form.name(class="mt-1 block w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500") }}
-                {% if form.name.errors %}
-                    <p class="mt-1 text-sm text-red-600">{{ form.name.errors[0] }}</p>
-                {% endif %}
-                <p class="text-xs text-gray-500 mt-1">Enter your full name exactly as it appears on the approved list</p>
-            </div>
+    <!-- Google Register button -->
+    <a href="{{ url_for('auth.google_login') }}"
+       class="flex items-center justify-center gap-3 w-full py-3 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition duration-200 mb-6">
+        <svg class="w-5 h-5" viewBox="0 0 48 48">
+            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+        </svg>
+        <span class="text-sm font-medium text-gray-700">Register with Google</span>
+    </a>
 
-            <!-- Email -->
-            <div>
-                <label class="block text-sm font-medium text-gray-700">Email</label>
-                {{ form.email(class="mt-1 block w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500") }}
-                {% if form.email.errors %}
-                    <p class="mt-1 text-sm text-red-600">{{ form.email.errors[0] }}</p>
-                {% endif %}
-            </div>
-
-            <!-- Batch Selection -->
-            <div>
-                <label class="block text-sm font-medium text-gray-700">Batch/Class</label>
-                {{ form.batch(class="mt-1 block w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500") }}
-                {% if form.batch.errors %}
-                    <p class="mt-1 text-sm text-red-600">{{ form.batch.errors[0] }}</p>
-                {% endif %}
-                <p class="text-xs text-gray-500 mt-1">Select your batch (e.g., Code 1&2, Code 3&4)</p>
-            </div>
-
-            <!-- Level -->
-            <div>
-                <label class="block text-sm font-medium text-gray-700">Level</label>
-                {{ form.level(class="mt-1 block w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500") }}
-                {% if form.level.errors %}
-                    <p class="mt-1 text-sm text-red-600">{{ form.level.errors[0] }}</p>
-                {% endif %}
-                <p class="text-xs text-gray-500 mt-1">Select your current level in the batch</p>
-            </div>
-
-            <!-- Password with Show/Hide -->
-            <div>
-                <label class="block text-sm font-medium text-gray-700">Password</label>
-                <div class="relative">
-                    {{ form.password(class="mt-1 block w-full px-4 py-2 pr-10 bg-gray-50 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500", id="password") }}
-                    <button type="button" onclick="togglePassword('password', 'togglePassword1')" 
-                            class="absolute inset-y-0 right-0 pr-3 flex items-center text-sm text-gray-600 hover:text-gray-800">
-                        <span id="togglePassword1">👁️</span>
-                    </button>
-                </div>
-                {% if form.password.errors %}
-                    <p class="mt-1 text-sm text-red-600">{{ form.password.errors[0] }}</p>
-                {% endif %}
-            </div>
-
-            <!-- Confirm Password with Show/Hide -->
-            <div>
-                <label class="block text-sm font-medium text-gray-700">Confirm Password</label>
-                <div class="relative">
-                    {{ form.confirm_password(class="mt-1 block w-full px-4 py-2 pr-10 bg-gray-50 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500", id="confirm_password") }}
-                    <button type="button" onclick="togglePassword('confirm_password', 'togglePassword2')" 
-                            class="absolute inset-y-0 right-0 pr-3 flex items-center text-sm text-gray-600 hover:text-gray-800">
-                        <span id="togglePassword2">👁️</span>
-                    </button>
-                </div>
-                {% if form.confirm_password.errors %}
-                    <p class="mt-1 text-sm text-red-600">{{ form.confirm_password.errors[0] }}</p>
-                {% endif %}
-            </div>
-
-            <button type="submit" class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition duration-200">
-                Create Account
-            </button>
-        </div>
-    </form>
-
-    <p class="mt-4 text-center text-sm text-gray-600">
-        Already have an account? 
+    <p class="text-center text-sm text-gray-600">
+        Already have an account?
         <a href="{{ url_for('auth.login') }}" class="text-indigo-600 hover:text-indigo-500 font-medium">
             Sign in here
         </a>
     </p>
 </div>
-
-<script>
-function togglePassword(fieldId, iconId) {
-    const passwordField = document.getElementById(fieldId);
-    const toggleIcon = document.getElementById(iconId);
-    
-    if (passwordField.type === 'password') {
-        passwordField.type = 'text';
-        toggleIcon.textContent = '🙈';  // "hide" icon
-    } else {
-        passwordField.type = 'password';
-        toggleIcon.textContent = '👁️';  // "show" icon
-    }
-}
-</script>
 {% endblock %}

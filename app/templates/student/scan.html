@@ -74,8 +74,10 @@ function showMessage(type, text) {
 async function submitAttendance(content) {
     const response = await fetch('{{ url_for("student.mark_attendance") }}', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // We just send the "content" now, no more splitting
+        headers: { 
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
         body: JSON.stringify({ qr_content: content })
     });
 
