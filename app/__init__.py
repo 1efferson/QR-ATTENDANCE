@@ -15,8 +15,6 @@ migrate = Migrate()
 cache = Cache()
 csrf = CSRFProtect()
 oauth = OAuth()
-celery = None
-
 
 def create_app(config_class=Config):
     app = Flask(__name__)
@@ -46,8 +44,7 @@ def create_app(config_class=Config):
     # Only start Celery if a real Redis URL is configured
     if os.environ.get("REDIS_URL"):
         from app.tasks.celery_app import make_celery
-        global celery
-        celery = make_celery(app)
+        make_celery(app)
     else:
         app.logger.warning("REDIS_URL not set — Celery disabled, Sheets sync will run synchronously.")
 
@@ -63,7 +60,5 @@ def create_app(config_class=Config):
     app.register_blueprint(main_bp)
     app.register_blueprint(admin_bp, url_prefix='/admin')
 
-    from app.scheduler import init_scheduler
-    init_scheduler(app)
 
     return app
