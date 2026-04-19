@@ -1,18 +1,40 @@
 import os
+import base64
+import json
+import tempfile
 from dotenv import load_dotenv
 
 load_dotenv()
+
+def _fix_db_url(url: str) -> str:
+    """Ensure PostgreSQL URLs use the psycopg2 driver."""
+    if url.startswith('postgres://'):
+        return url.replace('postgres://', 'postgresql+psycopg2://', 1)
+    if url.startswith('postgresql://') and 'psycopg2' not in url:
+        return url.replace('postgresql://', 'postgresql+psycopg2://', 1)
+    return url
+
+def _resolve_google_creds() -> str:
+    """Write base64-encoded credentials to a temp file if provided, else fallback to file path."""
+    b64 = os.environ.get('GOOGLE_CREDENTIALS_B64')
+    if b64:
+        creds_data = base64.b64decode(b64).decode()
+        tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+        tmp.write(creds_data)
+        tmp.close()
+        return tmp.name
+    return os.environ.get('GOOGLE_SHEETS_CREDENTIALS_FILE', 'credentials.json')
+
 
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-key-please-change-in-prod')
     MASTER_QR_SECRET = os.environ.get('ATTENDANCE_SECRET_KEY')
 
-    DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///attendance.db')
-    SQLALCHEMY_DATABASE_URI = DATABASE_URL
+    _raw_db_url = os.environ.get('DATABASE_URL', 'sqlite:///attendance.db')
+    SQLALCHEMY_DATABASE_URI = _fix_db_url(_raw_db_url)
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    # Pool settings only apply to PostgreSQL — SQLite doesn't support them
-    if not DATABASE_URL.startswith('sqlite'):
+    if not _raw_db_url.startswith('sqlite'):
         SQLALCHEMY_ENGINE_OPTIONS = {
             "pool_size": 10,
             "max_overflow": 20,
@@ -21,11 +43,11 @@ class Config:
             "pool_recycle": 1800,
         }
 
-      # CSRF
+    # CSRF
     WTF_CSRF_ENABLED = True
-    WTF_CSRF_TIME_LIMIT = None 
+    WTF_CSRF_TIME_LIMIT = None
 
-    GOOGLE_SHEETS_CREDENTIALS_FILE = os.environ.get('GOOGLE_SHEETS_CREDENTIALS_FILE', 'credentials.json')
+    GOOGLE_SHEETS_CREDENTIALS_FILE = _resolve_google_creds()
     GOOGLE_SHEET_ID = os.environ.get('GOOGLE_SHEET_ID')
     SHEETS_SPREADSHEET_NAME = "Facemark"
 
@@ -40,10 +62,9 @@ class Config:
 
     REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
-    # Use SimpleCache locally if Redis isn't available
     _redis_available = bool(os.environ.get("REDIS_URL"))
     CACHE_TYPE = "RedisCache" if _redis_available else "SimpleCache"
-    CACHE_REDIS_URL = REDIS_URL if _redis_available else None 
+    CACHE_REDIS_URL = REDIS_URL if _redis_available else None
     CACHE_DEFAULT_TIMEOUT = 60
 
     CELERY_BROKER_URL = REDIS_URL
