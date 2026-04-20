@@ -156,30 +156,41 @@ def history():
         user_id=current_user.id
     ).order_by(Absence.date.desc()).all()
 
+    # ── Early return if no history at all ───────────────────────────
+    if not attendances and not absences:
+        return render_template(
+            'student/history.html',
+            grouped_records={},
+            all_records={},
+            page=1,
+            total_pages=1,
+            no_history=True,
+        )
+
     # ── Merge into a unified list ────────────────────────────────────
     records = []
 
     for a in attendances:
         records.append({
-            'type':          'present',
-            'course_code':   a.course_code,
+            'type':             'present',
+            'course_code':      a.course_code,
             'is_personal_time': a.is_personal_time,
-            'sort_dt':       a.timestamp,
-            'display_date':  a.timestamp.strftime('%d %B %Y, %I:%M %p'),
-            'day_name':      a.timestamp.strftime('%A'),
-            'month_key':     a.timestamp.strftime('%B %Y'),
+            'sort_dt':          a.timestamp,
+            'display_date':     a.timestamp.strftime('%d %B %Y, %I:%M %p'),
+            'day_name':         a.timestamp.strftime('%A'),
+            'month_key':        a.timestamp.strftime('%B %Y'),
         })
 
     for ab in absences:
         dt = _dt.combine(ab.date, _dt.min.time())
         records.append({
-            'type':          'absent',
-            'course_code':   'General Attendance',
+            'type':             'absent',
+            'course_code':      'General Attendance',
             'is_personal_time': False,
-            'sort_dt':       dt,
-            'display_date':  ab.date.strftime('%d %B %Y'),
-            'day_name':      ab.date.strftime('%A'),
-            'month_key':     ab.date.strftime('%B %Y'),
+            'sort_dt':          dt,
+            'display_date':     ab.date.strftime('%d %B %Y'),
+            'day_name':         ab.date.strftime('%A'),
+            'month_key':        ab.date.strftime('%B %Y'),
         })
 
     # Sort newest first
@@ -191,7 +202,7 @@ def history():
         all_grouped.setdefault(record['month_key'], []).append(record)
 
     # ── Paginate by month group ──────────────────────────────────────
-    month_keys  = list(all_grouped.keys())   # already sorted newest-first
+    month_keys   = list(all_grouped.keys())  # already sorted newest-first
     total_months = len(month_keys)
     total_pages  = max(1, ceil(total_months / HISTORY_MONTHS_PER_PAGE))
 
@@ -199,16 +210,17 @@ def history():
     page = request.args.get('page', 1, type=int)
     page = max(1, min(page, total_pages))
 
-    start = (page - 1) * HISTORY_MONTHS_PER_PAGE
-    page_keys = month_keys[start:start + HISTORY_MONTHS_PER_PAGE]
-    grouped_records = {k: all_grouped[k] for k in page_keys}
+    start            = (page - 1) * HISTORY_MONTHS_PER_PAGE
+    page_keys        = month_keys[start:start + HISTORY_MONTHS_PER_PAGE]
+    grouped_records  = {k: all_grouped[k] for k in page_keys}
 
     return render_template(
         'student/history.html',
-        grouped_records=grouped_records,   # current page only
-        all_records=all_grouped,           # full set for summary pill counts
+        grouped_records=grouped_records,
+        all_records=all_grouped,
         page=page,
         total_pages=total_pages,
+        no_history=False,
     )
 
 
