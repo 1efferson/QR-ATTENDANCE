@@ -1,0 +1,329 @@
+/* ============================================================
+   index_page.css  —  scoped entirely to body.index-dark
+   No rule here affects any other page.
+   Future global dark mode: add [data-theme="dark"] to base.css
+   ============================================================ */
+
+/* ── CSS Variables (scoped, not :root) ── */
+.index-dark {
+  --bg: #0a0a0f;
+  --bg2: #111118;
+  --bg3: #16161f;
+  --surface: #1c1c27;
+  --border: rgba(255,255,255,0.08);
+  --border2: rgba(255,255,255,0.14);
+  --accent: #6c63ff;
+  --accent2: #a78bfa;
+  --accent3: #38bdf8;
+  --text: #f0f0f8;
+  --muted: #888899;
+  --subtle: #444455;
+}
+
+/* ── Base ── */
+.index-dark {
+  font-family: 'Outfit', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ── Nav override — make nav dark on index page only ── */
+.index-dark nav {
+  background: rgba(10, 10, 15, 0.85) !important;
+  border-bottom-color: var(--border) !important;
+  backdrop-filter: blur(12px);
+}
+.index-dark nav .text-indigo-600 {
+  color: var(--accent2) !important;
+}
+.index-dark nav .text-gray-500,
+.index-dark nav .text-gray-700 {
+  color: var(--muted) !important;
+}
+.index-dark nav a:hover {
+  color: var(--text) !important;
+}
+
+/* ── Main content area — remove default padding/max-width on index ── */
+.index-dark > main {
+  max-width: 100% !important;
+  padding: 0 !important;
+}
+
+/* ── Grid background ── */
+.index-dark .grid-bg {
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(rgba(108,99,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(108,99,255,0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none; z-index: 0;
+}
+
+/* ── Orbs ── */
+.index-dark .orb {
+  position: fixed; border-radius: 50%;
+  filter: blur(120px); pointer-events: none; z-index: 0; opacity: 0.35;
+}
+.index-dark .orb-1 {
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, #6c63ff 0%, transparent 70%);
+  top: -200px; left: -200px;
+}
+.index-dark .orb-2 {
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, #38bdf8 0%, transparent 70%);
+  bottom: -100px; right: -100px;
+}
+
+/* ── Main wrapper ── */
+.index-dark .qr-main {
+  position: relative; z-index: 1;
+}
+
+/* ── Hero ── */
+.index-dark .qr-hero {
+  min-height: 100vh;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center;
+  padding: clamp(3rem, 8vw, 6rem) clamp(1.25rem, 5vw, 3rem);
+}
+
+.index-dark .hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px; border-radius: 100px;
+  border: 1px solid rgba(108,99,255,0.35);
+  background: rgba(108,99,255,0.1);
+  color: var(--accent2);
+  font-size: 12px; font-weight: 500; letter-spacing: 0.08em;
+  text-transform: uppercase; margin-bottom: 2rem;
+  font-family: 'DM Mono', monospace;
+}
+.index-dark .hero-badge-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent2);
+  animation: index-pulse 2s infinite;
+}
+@keyframes index-pulse {
+  0%,100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.5; transform: scale(0.8); }
+}
+
+.index-dark .hero-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: clamp(3rem, 8vw, 6rem);
+  line-height: 1.05; letter-spacing: -0.03em;
+  margin-bottom: 1.5rem; max-width: 14ch;
+}
+.index-dark .hero-title .accent-word {
+  background: linear-gradient(135deg, var(--accent2) 0%, var(--accent3) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-style: italic;
+}
+
+.index-dark .hero-sub {
+  font-size: clamp(1rem, 2.5vw, 1.2rem);
+  color: var(--muted); max-width: 42ch;
+  line-height: 1.7; margin-bottom: 2.5rem; font-weight: 300;
+}
+
+.index-dark .hero-cta {
+  display: flex; flex-wrap: wrap; gap: 12px;
+  justify-content: center; margin-bottom: 4rem;
+}
+
+/* ── Buttons ── */
+.index-dark .btn-hero {
+  padding: 14px 28px; border-radius: 10px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 15px; font-weight: 500;
+  cursor: pointer; text-decoration: none;
+  transition: all 0.25s;
+  display: inline-flex; align-items: center; gap: 8px; border: none;
+}
+.index-dark .btn-hero-primary {
+  background: linear-gradient(135deg, #6c63ff, #8b5cf6);
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(108,99,255,0.35);
+}
+.index-dark .btn-hero-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 35px rgba(108,99,255,0.5);
+}
+.index-dark .btn-hero-secondary {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border2);
+}
+.index-dark .btn-hero-secondary:hover {
+  background: #22222f;
+  transform: translateY(-1px);
+}
+
+/* ── Stats ── */
+.index-dark .hero-stats {
+  display: flex; gap: clamp(1.5rem, 5vw, 4rem);
+  flex-wrap: wrap; justify-content: center;
+  border-top: 1px solid var(--border);
+  padding-top: 2rem; width: 100%; max-width: 600px;
+}
+.index-dark .stat { text-align: center; }
+.index-dark .stat-num {
+  font-family: 'DM Serif Display', serif;
+  font-size: clamp(1.5rem, 4vw, 2.2rem);
+  color: var(--text); line-height: 1.1;
+}
+.index-dark .stat-label {
+  font-size: 12px; color: var(--muted);
+  margin-top: 4px; text-transform: uppercase; letter-spacing: 0.06em;
+}
+
+/* ── Sections ── */
+.index-dark .section-wrap {
+  max-width: 1100px; margin: 0 auto;
+  padding: clamp(4rem, 10vw, 8rem) clamp(1.25rem, 5vw, 3rem);
+}
+.index-dark .section-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px; letter-spacing: 0.15em;
+  text-transform: uppercase; color: var(--accent2);
+  margin-bottom: 0.75rem;
+  display: flex; align-items: center; gap: 8px;
+}
+.index-dark .section-label::before {
+  content: ''; display: block;
+  width: 20px; height: 1px; background: var(--accent2);
+}
+.index-dark .section-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  letter-spacing: -0.02em; line-height: 1.1;
+  margin-bottom: 1rem; max-width: 16ch;
+}
+.index-dark .section-body {
+  color: var(--muted); font-size: 1rem;
+  max-width: 45ch; line-height: 1.7;
+  margin-bottom: 3rem; font-weight: 300;
+}
+
+/* ── Feature cards ── */
+.index-dark .features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 16px;
+}
+.index-dark .feature-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: clamp(1.5rem, 4vw, 2rem);
+  transition: all 0.3s; position: relative; overflow: hidden;
+}
+.index-dark .feature-card::before {
+  content: ''; position: absolute; inset: 0; border-radius: 16px;
+  background: linear-gradient(135deg, rgba(108,99,255,0.06), transparent 60%);
+  opacity: 0; transition: opacity 0.3s;
+}
+.index-dark .feature-card:hover {
+  border-color: rgba(108,99,255,0.4);
+  transform: translateY(-4px);
+}
+.index-dark .feature-card:hover::before { opacity: 1; }
+
+.index-dark .feature-icon {
+  width: 44px; height: 44px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; margin-bottom: 1.2rem;
+}
+.index-dark .icon-purple { background: rgba(108,99,255,0.15); }
+.index-dark .icon-blue   { background: rgba(56,189,248,0.12); }
+.index-dark .icon-green  { background: rgba(52,211,153,0.12); }
+.index-dark .icon-amber  { background: rgba(251,191,36,0.12); }
+
+.index-dark .feature-title {
+  font-size: 1rem; font-weight: 500; margin-bottom: 0.5rem;
+}
+.index-dark .feature-desc {
+  font-size: 0.875rem; color: var(--muted);
+  line-height: 1.65; font-weight: 300;
+}
+
+/* ── How it works ── */
+.index-dark .how-section {
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.index-dark .steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 24px; margin-top: 3rem;
+}
+.index-dark .step {
+  padding: 1.75rem; background: var(--bg3);
+  border-radius: 12px; border: 1px solid var(--border); position: relative;
+}
+.index-dark .step-num {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px; color: var(--subtle);
+  letter-spacing: 0.1em; margin-bottom: 1rem;
+}
+.index-dark .step-title { font-size: 1rem; font-weight: 500; margin-bottom: 0.5rem; }
+.index-dark .step-desc  { font-size: 0.85rem; color: var(--muted); line-height: 1.6; font-weight: 300; }
+
+/* ── CTA section ── */
+.index-dark .cta-section {
+  padding: clamp(5rem, 12vw, 10rem) clamp(1.25rem, 5vw, 3rem);
+  text-align: center; max-width: 700px; margin: 0 auto;
+}
+.index-dark .cta-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: clamp(2rem, 6vw, 4rem);
+  letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 1.25rem;
+}
+.index-dark .cta-sub {
+  color: var(--muted); font-size: 1rem;
+  margin-bottom: 2.5rem; font-weight: 300; line-height: 1.7;
+}
+
+/* ── Footer ── */
+.index-dark .qr-footer {
+  border-top: 1px solid var(--border);
+  padding: 2rem clamp(1.25rem, 5vw, 3rem);
+  display: flex; align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap; gap: 12px;
+  position: relative; z-index: 1;
+}
+.index-dark .footer-text {
+  font-size: 13px; color: var(--subtle);
+  font-family: 'DM Mono', monospace;
+}
+.index-dark .footer-links { display: flex; gap: 20px; }
+.index-dark .footer-links a {
+  font-size: 13px; color: var(--subtle); text-decoration: none;
+}
+.index-dark .footer-links a:hover { color: var(--muted); }
+
+/* ── Animations ── */
+@keyframes index-fadeUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.index-dark .fade-up { animation: index-fadeUp 0.7s ease both; }
+.index-dark .delay-1 { animation-delay: 0.1s; }
+.index-dark .delay-2 { animation-delay: 0.2s; }
+.index-dark .delay-3 { animation-delay: 0.3s; }
+.index-dark .delay-4 { animation-delay: 0.45s; }
+
+/* ── Mobile ── */
+@media (max-width: 480px) {
+  .index-dark .hero-cta {
+    flex-direction: column; width: 100%; max-width: 320px;
+  }
+  .index-dark .btn-hero { width: 100%; justify-content: center; }
+  .index-dark .qr-footer { flex-direction: column; align-items: flex-start; }
+}

@@ -19,10 +19,15 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="QR Attendance">
-    <meta name="mobile-web-app-capable" content="yes"> 
+    <meta name="mobile-web-app-capable" content="yes">
     {% block head %}{% endblock %}
 </head>
-<body class="bg-gray-50 text-gray-900 font-sans">
+{#
+  body_class block — child templates inject page-specific classes here.
+  Example: index.html sets "index-dark" to scope its dark theme.
+  Future dark mode: Flask/JS adds data-theme="dark" at runtime — no template changes needed.
+#}
+<body class="bg-gray-50 text-gray-900 font-sans {% block body_class %}{% endblock %}">
 
     <!-- Toast Container -->
     <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
@@ -66,11 +71,11 @@
                             </a>
                         </div>
 
-                    {% else %}
-                        <a href="{{ url_for('auth.login') }}" class="text-sm font-medium text-gray-700 hover:text-indigo-600">
-                            Login
-                        </a>
-                    {% endif %}
+                {% else %}
+                    <a href="{{ url_for('auth.login') }}" class="text-sm font-medium text-gray-700 hover:text-indigo-600">
+                        Login
+                    </a>
+                {% endif %}
                 </div>
 
             </div>
@@ -201,14 +206,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const dropdown = document.getElementById('settingsDropdown');
 
     if (btn && dropdown) {
-        // Toggle on gear click — stopPropagation prevents the document
-        // click listener below from immediately closing it again
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             dropdown.classList.toggle('hidden');
         });
 
-        // Close when clicking anywhere outside the button or dropdown
         document.addEventListener('click', (e) => {
             if (!btn.contains(e.target) && !dropdown.contains(e.target)) {
                 dropdown.classList.add('hidden');
@@ -237,13 +239,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (isIOS && !isInStandaloneMode) {
         console.info('iOS detected: user can install via Share → Add to Home Screen');
     }
-    // Re-attach listeners when browser restores page from back/forward cache
+
     window.addEventListener('pageshow', (e) => {
-    if (e.persisted) {
-        // Page was restored from bfcache — reload to get fresh CSRF token
-        window.location.reload();
-    }
-});
+        if (e.persisted) {
+            window.location.reload();
+        }
+    });
 
 });
 </script>
