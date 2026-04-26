@@ -1,7 +1,5 @@
 /* ============================================================
    index_page.css  —  scoped entirely to body.index-dark
-   No rule here affects any other page.
-   Future global dark mode: add [data-theme="dark"] to base.css
    ============================================================ */
 
 /* ── CSS Variables (scoped, not :root) ── */

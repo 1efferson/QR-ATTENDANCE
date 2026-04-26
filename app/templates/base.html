@@ -24,8 +24,6 @@
 </head>
 {#
   body_class block — child templates inject page-specific classes here.
-  Example: index.html sets "index-dark" to scope its dark theme.
-  Future dark mode: Flask/JS adds data-theme="dark" at runtime — no template changes needed.
 #}
 <body class="bg-gray-50 text-gray-900 font-sans {% block body_class %}{% endblock %}">
 
