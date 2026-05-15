@@ -1,1 +1,44 @@
 @import "tailwindcss";
+
+/*
+  ── Dark mode via .dark class on <body> ───────────────────────────────────
+  Tailwind v4: @variant replaces darkMode config.
+  JS toggles body.classList('dark') and saves to localStorage.
+  ─────────────────────────────────────────────────────────────────────────
+*/
+@variant dark (&:where(.dark, .dark *));
+
+/*
+  ── Dark theme color tokens ───────────────────────────────────────────────
+  These override Tailwind's default palette inside .dark.
+  Use these in custom CSS files via var(--color-*).
+  ─────────────────────────────────────────────────────────────────────────
+*/
+@layer base {
+  :root {
+    --surface-page:   #f9fafb;   /* body bg     — light */
+    --surface-card:   #ffffff;   /* card/panel  — light */
+    --surface-input:  #f9fafb;   /* input bg    — light */
+    --border-default: #e5e7eb;   /* borders     — light */
+    --text-primary:   #111827;   /* headings    — light */
+    --text-secondary: #6b7280;   /* muted text  — light */
+    --text-tertiary:  #9ca3af;   /* subtle text — light */
+  }
+
+  .dark {
+    --surface-page:   #0f1117;
+    --surface-card:   #1a1d27;
+    --surface-input:  #22263a;
+    --border-default: rgba(255,255,255,0.08);
+    --text-primary:   #f0f0f8;
+    --text-secondary: #9ca3af;
+    --text-tertiary:  #6b7280;
+  }
+
+  /* Apply page background to body automatically */
+  body {
+    background-color: var(--surface-page);
+    color: var(--text-primary);
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+}

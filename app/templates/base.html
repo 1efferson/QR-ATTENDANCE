@@ -7,6 +7,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>QR Attendance - {% block title %}{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dark.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/toast.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/student-mobile.css') }}">
 
@@ -21,10 +22,24 @@
     <meta name="apple-mobile-web-app-title" content="QR Attendance">
     <meta name="mobile-web-app-capable" content="yes">
     {% block head %}{% endblock %}
+
+    <!--
+      Flash-of-light-theme prevention.
+      Runs synchronously before body paints — must stay in <head>.
+      Hides body until DOMContentLoaded applies the correct theme class.
+    -->
+    <script>
+    (function () {
+        if (localStorage.getItem('theme') === 'dark') {
+        document.documentElement.classList.add('dark');       
+        document.documentElement.classList.add('__dark_pending'); 
+        }
+    })();
+    </script>
+    <style>
+      .__dark_pending body { visibility: hidden; }
+    </style>
 </head>
-{#
-  body_class block — child templates inject page-specific classes here.
-#}
 <body class="bg-gray-50 text-gray-900 font-sans {% block body_class %}{% endblock %}">
 
     <!-- Toast Container -->
@@ -50,6 +65,7 @@
                             Admin
                         </a>
                     {% endif %}
+
                     <div class="relative text-left inline-block {% if current_user.role == 'student' and request.blueprint == 'student' %}student-nav-settings{% endif %}">
                         <button id="settingsMenuButton" class="p-2 text-gray-500 hover:text-indigo-600 hover:bg-gray-100 rounded-full transition-colors focus:outline-none">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -57,17 +73,33 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                             </svg>
                         </button>
-                       
-                        <div id="settingsDropdown" class="hidden absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-xl py-2 z-50">
+
+                        <div id="settingsDropdown" class="hidden absolute right-0 mt-2 w-52 bg-white border border-gray-200 rounded-lg shadow-xl py-2 z-50">
+                            <!-- User name (mobile only) -->
                             <div class="px-4 py-2 border-b border-gray-100 sm:hidden">
                                 <p class="text-xs text-gray-400 uppercase font-semibold">User</p>
                                 <p class="text-sm font-medium text-gray-700 truncate">{{ current_user.name }}</p>
                             </div>
-                            
+
+                            <!-- Dark mode toggle -->
+                            <div class="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
+                                <span class="text-sm text-gray-700 select-none">Dark mode</span>
+                                <button id="themeToggle"
+                                        role="switch"
+                                        aria-checked="false"
+                                        class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                                        style="background-color: #d1d5db;">
+                                    <span id="themeToggleKnob"
+                                          class="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200"
+                                          style="transform: translateX(2px);"></span>
+                                </button>
+                            </div>
+
                             <a href="{{ url_for('auth.logout') }}" class="block px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition">
                                 Logout
                             </a>
                         </div>
+                    </div>
 
                 {% else %}
                     <a href="{{ url_for('auth.login') }}" class="text-sm font-medium text-gray-700 hover:text-indigo-600">
@@ -84,24 +116,72 @@
         {% block content %}{% endblock %}
     </main>
 
-    <!-- Flash messages — serialised as a single JSON blob, no Jinja inside JS -->
-<script>
-    window._flashMessages = {{ get_flashed_messages(with_categories=true) | tojson }};
-</script>
+    <!-- Flash messages — serialised as JSON, no Jinja inside JS -->
+    <script>
+        window._flashMessages = {{ get_flashed_messages(with_categories=true) | tojson }};
+    </script>
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
 
+    // ── Theme System ──────────────────────────────────────────────────────
+    const toggle   = document.getElementById('themeToggle');
+    const knob     = document.getElementById('themeToggleKnob');
+    const ON_BG    = '#6366f1';
+    const OFF_BG   = '#d1d5db';
+
+    function applyTheme(isDark) {
+        document.documentElement.classList.toggle('dark', isDark);
+        document.body.classList.toggle('dark', isDark); 
+        if (toggle) {
+            toggle.style.backgroundColor = isDark ? ON_BG : OFF_BG;
+            toggle.setAttribute('aria-checked', String(isDark));
+        }
+        if (knob) {
+            knob.style.transform = isDark ? 'translateX(18px)' : 'translateX(2px)';
+        }
+        // Keep bottom-bar toggle in sync if it's on the page
+        syncBarToggle(isDark);
+    }
+
+    // Apply saved preference immediately, then remove flash-prevention class
+    const isDark = localStorage.getItem('theme') === 'dark';
+    applyTheme(isDark);
+    document.documentElement.classList.remove('__dark_pending');
+    document.body.style.visibility = '';
+
+    if (toggle) {
+        toggle.addEventListener('click', (e) => {
+            e.stopPropagation(); // Keep dropdown open after clicking toggle
+            const next = !document.body.classList.contains('dark');
+            localStorage.setItem('theme', next ? 'dark' : 'light');
+            applyTheme(next);
+        });
+    }
+
+    // ── Bottom bar toggle sync ────────────────────────────────────────────
+    function syncBarToggle(isDark) {
+        const barToggle = document.getElementById('barThemeToggle');
+        const barKnob   = document.getElementById('barThemeKnob');
+        if (!barToggle) return;
+        barToggle.style.backgroundColor = isDark ? ON_BG : OFF_BG;
+        barToggle.setAttribute('aria-checked', String(isDark));
+        if (barKnob) barKnob.style.transform = isDark ? 'translateX(18px)' : 'translateX(2px)';
+    }
+
+    // barThemeToggle click is handled in _bottom_bar.html
+    // but it calls applyTheme via window.applyTheme
+    window.applyTheme = applyTheme;
+
+
     // ── Toast System ──────────────────────────────────────────────────────
     const DURATION = 5000;
-
     const ICONS = {
         success: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
         error:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
         warning: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
         info:    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
     };
-
     const TITLES = { success: 'Success', error: 'Error', warning: 'Warning', info: 'Info' };
 
     function resolveType(category) {
@@ -120,7 +200,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const type      = resolveType(category);
         const container = document.getElementById('toast-container');
         const toast     = document.createElement('div');
-
         toast.className = `toast toast-${type}`;
         toast.setAttribute('role', 'alert');
         toast.innerHTML = `
@@ -136,10 +215,8 @@ document.addEventListener('DOMContentLoaded', () => {
             </button>
             <div class="toast-progress" style="animation-duration: ${DURATION}ms;"></div>
         `;
-
         container.appendChild(toast);
         requestAnimationFrame(() => requestAnimationFrame(() => toast.classList.add('show')));
-
         const timer = setTimeout(() => dismiss(toast), DURATION);
         toast.querySelector('.toast-close').addEventListener('click', () => {
             clearTimeout(timer);
@@ -147,13 +224,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // make future fetch calls cleaner
     window.getCsrfToken = () => document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-
-    // Expose globally for use in other scripts
     window.showToast = showToast;
-
-    // Fire any flash messages from Flask
     (window._flashMessages || []).forEach(([category, message], i) => {
         setTimeout(() => showToast({ category, message }), i * 150);
     });
@@ -191,7 +263,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // Close modal when clicking the backdrop
     document.addEventListener('click', (e) => {
         if (e.target.classList.contains('modal-backdrop')) {
             window.closeModal(e.target.id);
@@ -208,7 +279,6 @@ document.addEventListener('DOMContentLoaded', () => {
             e.stopPropagation();
             dropdown.classList.toggle('hidden');
         });
-
         document.addEventListener('click', (e) => {
             if (!btn.contains(e.target) && !dropdown.contains(e.target)) {
                 dropdown.classList.add('hidden');
@@ -216,7 +286,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ── Single Escape handler (modals + dropdown) ─────────────────────────
+    // ── Escape key handler ────────────────────────────────────────────────
     document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
         if (dropdown) dropdown.classList.add('hidden');
@@ -232,16 +302,13 @@ document.addEventListener('DOMContentLoaded', () => {
             .catch(err => console.error('SW registration failed:', err));
     }
 
-    const isIOS            = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
-    const isInStandaloneMode = window.navigator.standalone;
-    if (isIOS && !isInStandaloneMode) {
+    const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
+    if (isIOS && !window.navigator.standalone) {
         console.info('iOS detected: user can install via Share → Add to Home Screen');
     }
 
     window.addEventListener('pageshow', (e) => {
-        if (e.persisted) {
-            window.location.reload();
-        }
+        if (e.persisted) window.location.reload();
     });
 
 });
