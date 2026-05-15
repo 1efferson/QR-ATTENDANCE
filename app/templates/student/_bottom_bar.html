@@ -29,7 +29,27 @@
   <div class="bar-btn-wrap">
 
     <!-- Dropdown (opens upward) -->
-      <div id="barSettingsDropdown" class="bar-dropdown" aria-hidden="true">
+    <div id="barSettingsDropdown" class="bar-dropdown" aria-hidden="true">
+
+      <!-- Dark mode toggle row -->
+      <div class="bar-dropdown-item bar-dropdown-toggle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+        <span>Dark mode</span>
+        <button id="barThemeToggle"
+                role="switch"
+                aria-checked="false"
+                class="bar-theme-toggle"
+                style="background-color: #d1d5db;">
+          <span id="barThemeKnob"
+                class="bar-theme-knob"
+                style="transform: translateX(2px);"></span>
+        </button>
+      </div>
+
+      <hr class="bar-dropdown-divider">
+
       <a href="{{ url_for('auth.logout') }}" class="bar-dropdown-item danger">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -57,7 +77,7 @@
 </nav>
 
 <style>
-  /* 1. Layout Wrapper */
+  /* ── Layout Wrapper ──────────────────────────────────────── */
   .bar-btn-wrap {
     position: relative;
     display: flex;
@@ -65,47 +85,41 @@
     justify-content: center;
   }
 
-  /* 2. Buttons & Touch Interaction */
-  .bar-btn, 
+  /* ── Touch optimisation ──────────────────────────────────── */
+  .bar-btn,
   .bar-btn-wrap button {
-    touch-action: manipulation; /* Removes 300ms tap delay */
+    touch-action: manipulation;
     cursor: pointer;
-    -webkit-tap-highlight-color: transparent; /* Clean tap on mobile */
-    /* Add your other existing button styles here */
+    -webkit-tap-highlight-color: transparent;
   }
 
-  /* 3. The Dropdown Panel */
+  /* ── Dropdown Panel ──────────────────────────────────────── */
   .bar-dropdown {
     position: absolute;
-    bottom: calc(100% + 10px); /* Sits above the bar */
+    bottom: calc(100% + 10px);
     right: 0;
-    min-width: 176px;
+    min-width: 196px;
     background: #ffffff;
     border: 1px solid #e5e7eb;
     border-radius: 12px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
     overflow: hidden;
     z-index: 200;
-
-    /* Hidden State - Starts lower and slightly smaller */
     opacity: 0;
     transform: translateY(12px) scale(0.95);
     pointer-events: none;
-    
-    /* Optimized Transition for 'Snappiness' */
-    transition: 
-      opacity 0.12s ease-out, 
-      transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1); /* Tiny 'pop' effect */
+    transition:
+      opacity 0.12s ease-out,
+      transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
-  /* 4. Open State */
   .bar-dropdown.open {
     opacity: 1;
     transform: translateY(0) scale(1);
     pointer-events: auto;
   }
 
-  /* 5. Dropdown Items */
+  /* ── Dropdown Items ──────────────────────────────────────── */
   .bar-dropdown-item {
     display: flex;
     align-items: center;
@@ -117,38 +131,63 @@
     text-decoration: none;
     transition: background 0.12s, color 0.12s;
   }
-
-  .bar-dropdown-item:hover { 
-    background: #f0f0ff; 
-    color: #6366f1; 
+  .bar-dropdown-item:hover {
+    background: #f0f0ff;
+    color: #6366f1;
   }
+  .bar-dropdown-item.danger       { color: #dc2626; }
+  .bar-dropdown-item.danger:hover { background: #fef2f2; color: #b91c1c; }
 
-  .bar-dropdown-item.danger { 
-    color: #dc2626; 
+  /* Toggle row: label + switch side by side */
+  .bar-dropdown-toggle {
+    cursor: default;
+    justify-content: space-between;
   }
+  .bar-dropdown-toggle span { flex: 1; }
+  .bar-dropdown-toggle:hover { background: transparent; color: #374151; }
 
-  .bar-dropdown-item.danger:hover { 
-    background: #fef2f2; 
-    color: #b91c1c; 
-  }
-
-  /* 6. Icons inside items */
+  /* ── Icons inside items ──────────────────────────────────── */
   .bar-dropdown-item svg {
-    width: 16px; 
-    height: 16px;
-    stroke: currentColor; 
-    fill: none;
-    stroke-width: 1.8; 
-    stroke-linecap: round; 
-    stroke-linejoin: round;
+    width: 16px; height: 16px;
+    stroke: currentColor; fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round; stroke-linejoin: round;
     flex-shrink: 0;
   }
 
-  /* 7. Divider */
+  /* ── Divider ─────────────────────────────────────────────── */
   .bar-dropdown-divider {
     margin: 0;
     border: none;
     border-top: 1px solid #f3f4f6;
+  }
+
+  /* ── Theme toggle switch ─────────────────────────────────── */
+  .bar-theme-toggle {
+    position: relative;
+    display: inline-flex;
+    height: 20px;
+    width: 36px;
+    align-items: center;
+    border-radius: 9999px;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .bar-theme-toggle:focus-visible {
+    outline: 2px solid #6366f1;
+    outline-offset: 2px;
+  }
+  .bar-theme-knob {
+    display: inline-block;
+    height: 14px; width: 14px;
+    border-radius: 50%;
+    background: white;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    transition: transform 0.2s;
+    position: absolute;
   }
 </style>
 
@@ -156,6 +195,8 @@
   (function () {
     const btn      = document.getElementById('barSettingsBtn');
     const dropdown = document.getElementById('barSettingsDropdown');
+    const barToggle = document.getElementById('barThemeToggle');
+
     if (!btn || !dropdown) return;
 
     function open() {
@@ -170,20 +211,29 @@
       btn.setAttribute('aria-expanded', 'false');
     }
 
-    // Toggle on button tap
     btn.addEventListener('click', function (e) {
       e.stopPropagation();
       dropdown.classList.contains('open') ? close() : open();
     });
 
-    // Close when tapping anywhere else on the page
     document.addEventListener('click', function (e) {
       if (!dropdown.contains(e.target) && e.target !== btn) close();
     });
 
-    // Close on Escape
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') close();
     });
+
+    // Theme toggle — delegates to window.applyTheme set by base.html
+    if (barToggle) {
+      barToggle.addEventListener('click', function (e) {
+        e.stopPropagation(); // Keep dropdown open
+        if (typeof window.applyTheme === 'function') {
+          const next = !document.body.classList.contains('dark');
+          localStorage.setItem('theme', next ? 'dark' : 'light');
+          window.applyTheme(next);
+        }
+      });
+    }
   })();
 </script>
