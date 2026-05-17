@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+{% block title %}Device Setup{% endblock %}
+
+{% block head %}
+<script src="{{ url_for('static', filename='js/device_fingerprint.js') }}"></script>
+<style>
+  .ob-wrap   { max-width: 420px; margin: 0 auto; padding: 2rem 1rem; }
+  .step-dots { display: flex; justify-content: center; gap: 8px; margin-bottom: 2rem; }
+  .dot       { width: 10px; height: 10px; border-radius: 50%; background: #e0e7ff; transition: background .3s; }
+  .dot.active{ background: #4f46e5; }
+  .step      { display: none; text-align: center; }
+  .step.show { display: block; }
+  .pin-row   { display: flex; gap: 8px; justify-content: center; margin: 1rem 0; }
+  .pin-box   { width: 44px; height: 52px; border: 2px solid #e0e7ff; border-radius: 8px;
+               text-align: center; font-size: 1.4rem; outline: none; transition: border-color .2s; }
+  .pin-box:focus { border-color: #4f46e5; }
+  .btn-primary { width: 100%; background: #4f46e5; color: #fff; border: none;
+                 padding: .75rem; border-radius: 8px; font-size: .95rem; cursor: pointer;
+                 margin-top: .75rem; }
+  .btn-primary:hover { background: #4338ca; }
+  .info-box  { background: #eef2ff; border-left: 4px solid #6366f1;
+               border-radius: 8px; padding: 1rem 1.25rem; text-align: left;
+               font-size: .875rem; color: #3730a3; margin-bottom: 1.5rem; line-height: 1.6; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ob-wrap">
+  <div class="step-dots">
+    <div class="dot active" id="dot0"></div>
+    <div class="dot" id="dot1"></div>
+    <div class="dot" id="dot2"></div>
+  </div>
+
+  <!-- Step 0: Why -->
+  <div class="step show" id="step0">
+    <div style="font-size:2.5rem;margin-bottom:.75rem">📱</div>
+    <h2 class="text-xl font-semibold text-gray-800 mb-3">Phone-only attendance</h2>
+    <div class="info-box">
+      <strong>Why do we need this?</strong><br>
+      To keep attendance fair, QR scanning only works when you're physically in class,
+      on the school network, and using your registered phone.
+      Nobody can scan on your behalf from outside.
+    </div>
+    <div class="info-box">
+      <strong>What we collect</strong><br>
+      A fingerprint of your browser and device — no photos, no location.
+      This lets us recognise your phone without storing private data.
+    </div>
+    <button class="btn-primary" onclick="goStep(1)">Got it, let's set up →</button>
+  </div>
+
+  <!-- Step 1: Register device -->
+  <div class="step" id="step1">
+    <div style="font-size:2.5rem;margin-bottom:.75rem">🔒</div>
+    <h2 class="text-xl font-semibold text-gray-800 mb-3">Registering your phone</h2>
+    <p class="text-sm text-gray-500 mb-4">
+      We're fingerprinting this device now. This only takes a second.
+    </p>
+    <div id="fp-status" class="info-box">Scanning your device…</div>
+    <button class="btn-primary" id="fp-next-btn" disabled onclick="goStep(2)">
+      Continue →
+    </button>
+  </div>
+
+  <!-- Step 2: Set PIN -->
+  <div class="step" id="step2">
+    <div style="font-size:2.5rem;margin-bottom:.75rem">🔑</div>
+    <h2 class="text-xl font-semibold text-gray-800 mb-3">Set a 6-digit PIN</h2>
+    <p class="text-sm text-gray-500 mb-4">
+      Used to verify you if your phone doesn't support biometrics,
+      or when you log in on your second registered device.
+    </p>
+    <div class="pin-row" id="pinBoxes">
+      <input class="pin-box" type="password" inputmode="numeric" maxlength="1">
+      <input class="pin-box" type="password" inputmode="numeric" maxlength="1">
+      <input class="pin-box" type="password" inputmode="numeric" maxlength="1">
+      <input class="pin-box" type="password" inputmode="numeric" maxlength="1">
+      <input class="pin-box" type="password" inputmode="numeric" maxlength="1">
+      <input class="pin-box" type="password" inputmode="numeric" maxlength="1">
+    </div>
+    <p id="pin-error" class="text-xs text-red-600 hidden">Please enter all 6 digits.</p>
+    <button class="btn-primary" onclick="submitOnboarding()">Finish setup ✓</button>
+  </div>
+
+  {% include 'student/_bottom_bar.html' %}
+</div>
+
+<script>
+let deviceFp  = '';
+let deviceId  = sessionStorage.getItem('pending_device_id') || '';
+
+// Auto-advance PIN boxes
+document.querySelectorAll('.pin-box').forEach((box, i, boxes) => {
+    box.addEventListener('input', () => {
+        if (box.value && i < boxes.length - 1) boxes[i + 1].focus();
+    });
+    box.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !box.value && i > 0) boxes[i - 1].focus();
+    });
+});
+
+function goStep(n) {
+    document.querySelectorAll('.step').forEach((s, i) => {
+        s.classList.toggle('show', i === n);
+    });
+    document.querySelectorAll('.dot').forEach((d, i) => {
+        d.classList.toggle('active', i === n);
+    });
+    if (n === 1) registerDevice();
+}
+
+async function registerDevice() {
+    const statusEl = document.getElementById('fp-status');
+    const nextBtn  = document.getElementById('fp-next-btn');
+
+    try {
+        deviceFp = sessionStorage.getItem('device_fp') 
+                   || await collectDeviceFingerprint();
+        sessionStorage.setItem('device_fp', deviceFp);
+
+        const res  = await fetch('/student/device/register', {
+            method : 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken'  : window.getCsrfToken()
+            },
+            body: JSON.stringify({ device_fp: deviceFp })
+        });
+        const data = await res.json();
+
+        if (!data.success) {
+            statusEl.textContent = `⚠ ${data.message}`;
+            return;
+        }
+
+        deviceId = String(data.device_id);
+        sessionStorage.setItem('pending_device_id', deviceId);
+
+        // KEY: if they're a returning student on a new fingerprint,
+        // show PIN recovery instead of new PIN setup
+        if (data.is_returning_student) {
+            showRecoveryStep();
+            return;
+        }
+
+        statusEl.textContent = '✓ Device detected. Set your PIN to finish.';
+        statusEl.style.background  = '#d1fae5';
+        statusEl.style.color       = '#065f46';
+        statusEl.style.borderColor = '#34d399';
+        nextBtn.disabled = false;
+
+    } catch (e) {
+        statusEl.textContent = '⚠ Could not capture device. Try refreshing.';
+    }
+}
+
+function showRecoveryStep() {
+    // Replace step 1 content to show recovery UI instead of new setup
+    document.getElementById('step1').innerHTML = `
+        <div style="font-size:2.5rem;margin-bottom:.75rem">🔄</div>
+        <h2 class="text-xl font-semibold text-gray-800 mb-3">Recognise this account?</h2>
+        <p class="text-sm text-gray-500 mb-4">
+            We don't recognise this browser. Enter your PIN to verify it's you
+            and link this device to your account.
+        </p>
+        <div class="pin-row" id="recoveryPinBoxes">
+            <input class="pin-box" type="password" inputmode="numeric" maxlength="1">
+            <input class="pin-box" type="password" inputmode="numeric" maxlength="1">
+            <input class="pin-box" type="password" inputmode="numeric" maxlength="1">
+            <input class="pin-box" type="password" inputmode="numeric" maxlength="1">
+            <input class="pin-box" type="password" inputmode="numeric" maxlength="1">
+            <input class="pin-box" type="password" inputmode="numeric" maxlength="1">
+        </div>
+        <p id="recovery-error" class="text-xs text-red-600 hidden mb-2">Incorrect PIN.</p>
+        <button class="btn-primary" onclick="submitRecovery()">Verify & Continue →</button>
+        <p class="text-xs text-gray-400 mt-3">
+            Forgot your PIN? Contact your instructor to reset your device.
+        </p>
+    `;
+
+    // Wire up auto-advance for recovery boxes
+    document.querySelectorAll('#recoveryPinBoxes .pin-box').forEach((box, i, boxes) => {
+        box.addEventListener('input', () => {
+            if (box.value && i < boxes.length - 1) boxes[i + 1].focus();
+        });
+        box.addEventListener('keydown', (e) => {
+            if (e.key === 'Backspace' && !box.value && i > 0) boxes[i - 1].focus();
+        });
+    });
+}
+
+async function submitRecovery() {
+    const boxes = document.querySelectorAll('#recoveryPinBoxes .pin-box');
+    const pin   = Array.from(boxes).map(b => b.value).join('');
+    
+    if (pin.length < 6) return;
+
+    const res  = await fetch('/student/device/recover', {
+        method : 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken'  : window.getCsrfToken()
+        },
+        body: JSON.stringify({ device_fp: deviceFp, pin })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+        window.showToast?.({ category: 'success', message: '✓ Device verified!' });
+        setTimeout(() => window.location.href = '/student/scan', 1500);
+    } else {
+        document.getElementById('recovery-error').classList.remove('hidden');
+    }
+}
+
+async function submitOnboarding() {
+    const boxes = document.querySelectorAll('.pin-box');
+    const pin   = Array.from(boxes).map(b => b.value).join('');
+    const errEl = document.getElementById('pin-error');
+
+    if (pin.length < 6) {
+        errEl.classList.remove('hidden');
+        return;
+    }
+    errEl.classList.add('hidden');
+
+    const id = deviceId || sessionStorage.getItem('pending_device_id');
+
+    const res  = await fetch('{{ url_for("student.device_set_pin") }}', {
+        method : 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken'  : window.getCsrfToken()
+        },
+        body: JSON.stringify({ device_id: parseInt(id), pin })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+        sessionStorage.removeItem('pending_device_id');
+        window.showToast?.({ category: 'success', message: '✓ Device registered! You can now scan.' });
+        setTimeout(() => window.location.href = '{{ url_for("student.scan") }}', 1500);
+    } else {
+        window.showToast?.({ category: 'error', message: data.message || 'Setup failed. Try again.' });
+    }
+}
+</script>
+{% endblock %}
