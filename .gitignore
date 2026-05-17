@@ -44,3 +44,5 @@ celerybeat.pid
 
 # Node
 node_modules/
+
+seed_demo.py

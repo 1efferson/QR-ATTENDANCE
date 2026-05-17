@@ -6,7 +6,7 @@ from wtforms.validators import DataRequired, Email
 from sqlalchemy import func
 from app import db, oauth
 from app.models import User, ApprovedStudent, Batch, StudentDevice, InstructorWhitelist
-from datetime import datetime
+from datetime import datetime,timezone
 import logging
 
 from . import auth_bp
@@ -71,16 +71,17 @@ def register():
         return redirect(_redirect_for(current_user))
     return render_template('auth/register.html')
 
-
 # ── Google OAuth — Step 1: redirect to Google ────────────────────────────────
 
 @auth_bp.route('/google/login')
 def google_login():
     # Stash the 'next' URL so we can honour it after the callback
     session['oauth_next'] = request.args.get('next', '')
-    redirect_uri = url_for('auth.google_callback', _external=True)
+    
+    # FORCE the scheme to 'https' explicitly for production matching
+    redirect_uri = url_for('auth.google_callback', _external=True, _scheme='https')
+    
     return oauth.google.authorize_redirect(redirect_uri)
-
 
 # ── Google OAuth — Step 2: handle the return ─────────────────────────────────
 
@@ -137,7 +138,7 @@ def google_callback():
 
         approved_instructor.is_registered      = True
         approved_instructor.registered_user_id = new_instructor.id
-        approved_instructor.registered_at      = datetime.utcnow()
+        approved_instructor.registered_at      = datetime.now(timezone.utc)
         db.session.commit()
 
         login_user(new_instructor)
@@ -204,3 +205,15 @@ def logout():
     logout_user()
     flash('You have been signed out.', 'info')
     return redirect(url_for('auth.login'))
+
+@auth_bp.route('/debug-oauth')
+def debug_oauth():
+    from flask import jsonify
+    callback = url_for('auth.google_callback', _external=True)
+    callback_https = url_for('auth.google_callback', _external=True, _scheme='https')
+    return jsonify({
+        'generated_url'      : callback,
+        'generated_url_https': callback_https,
+        'x_forwarded_proto'  : request.headers.get('X-Forwarded-Proto', 'not set'),
+        'x_forwarded_for'    : request.headers.get('X-Forwarded-For', 'not set'),
+    })

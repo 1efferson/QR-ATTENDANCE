@@ -1,39 +1,45 @@
+# app/utils/attendance_guard.py
+
 import logging
-from datetime import datetime, timedelta
-from app.utils.ip_validation import is_ip_whitelisted, get_client_ip
-from app.utils.device_trust import get_or_register_device, is_device_trusted
+from datetime import datetime
+from app.utils.device_trust import get_or_register_device
 
 logger = logging.getLogger(__name__)
 
+
 def verify_attendance_scan(student_id: int, fp_hash: str, request) -> dict:
     """
-    Single entry point for all attendance security checks.
-    Returns a dict with 'allowed' bool and 'action' for the route to act on.
-    """
-    ip = get_client_ip()
-    ip_ok, ip_reason = is_ip_whitelisted(ip)
+    Security checks for an attendance scan.
+    IP whitelisting removed — device fingerprint is the primary gate.
 
-    user_agent  = request.headers.get('User-Agent', '')
+    Returns a dict with:
+        allowed (bool)
+        reason  (str)
+        action  (str, optional) — what the route should tell the client to do
+    """
+    ip         = _get_client_ip(request)
+    user_agent = request.headers.get('User-Agent', '')
+
     device_info = get_or_register_device(student_id, fp_hash, user_agent, ip)
 
-    # ── Anomaly: same device used for multiple students today ──
+    # Passive proxy check — logs only, never blocks
     if fp_hash:
         _check_proxy_attempt(student_id, fp_hash)
 
-    # ── Device cap reached ──
+    # ── Device cap reached ────────────────────────────────────────────
     if device_info['status'] == 'device_limit_reached':
         return {
             'allowed': False,
             'reason' : 'device_limit_reached',
-            'action' : 'show_device_limit_error',
+            'action' : 'device_limit_reached',
         }
 
-    # ── On school network + trusted device → allow ──
-    if ip_ok and device_info['trusted']:
-        return {'allowed': True, 'reason': 'school_network_trusted_device'}
+    # ── Trusted device → allow ────────────────────────────────────────
+    if device_info['trusted']:
+        return {'allowed': True, 'reason': 'trusted_device'}
 
-    # ── On school network + new device → onboard ──
-    if ip_ok and device_info['new_device']:
+    # ── New device → send to onboarding ──────────────────────────────
+    if device_info['new_device']:
         return {
             'allowed'  : False,
             'reason'   : 'new_device',
@@ -41,26 +47,28 @@ def verify_attendance_scan(student_id: int, fp_hash: str, request) -> dict:
             'device_id': device_info['device_id'],
         }
 
-    # ── On school network + known but not yet trusted → ask for PIN ──
-    if ip_ok and not device_info['trusted']:
-        return {
-            'allowed'  : False,
-            'reason'   : 'untrusted_device',
-            'action'   : 'prompt_pin',
-            'device_id': device_info['device_id'],
-            'has_pin'  : device_info.get('has_pin', False),
-        }
-
-    # ── Off network → block regardless of device ──
+    # ── Known but not yet trusted → ask for PIN ───────────────────────
     return {
-        'allowed': False,
-        'reason' : 'off_network',
-        'action' : 'show_location_error',
+        'allowed'  : False,
+        'reason'   : 'untrusted_device',
+        'action'   : 'prompt_pin',
+        'device_id': device_info['device_id'],
+        'has_pin'  : device_info.get('has_pin', False),
     }
+
+
+def _get_client_ip(request) -> str:
+    """Get real client IP, handling proxies."""
+    if request.headers.get('X-Forwarded-For'):
+        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    if request.headers.get('X-Real-IP'):
+        return request.headers.get('X-Real-IP')
+    return request.remote_addr
+
 
 def _check_proxy_attempt(student_id: int, fp_hash: str):
     """
-    Passive check — logs warning if the same device fingerprint
+    Passive check — logs a warning if the same device fingerprint
     has been used for a different student today. Does not block.
     """
     from app.models import Attendance

@@ -5,7 +5,6 @@ from app import csrf
 from app import db
 from app.models import Attendance, BlockedAttempt, Batch, Absence
 from datetime import datetime
-from app.utils.ip_validation import is_ip_whitelisted, get_client_ip
 import logging
 from datetime import datetime, timedelta
 from sqlalchemy.exc import IntegrityError
@@ -20,6 +19,16 @@ logger = logging.getLogger(__name__)
 
 HISTORY_MONTHS_PER_PAGE = 2
 
+
+def get_client_ip():
+    """Get real client IP, handling proxies."""
+    if request.headers.get('X-Forwarded-For'):
+        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    if request.headers.get('X-Real-IP'):
+        return request.headers.get('X-Real-IP')
+    return request.remote_addr
+
+
 @student_bp.route('/scan')
 @login_required
 def scan():
@@ -27,8 +36,6 @@ def scan():
         flash("Access denied: Students only.", "error")
         return redirect(url_for('instructor.dashboard'))
 
-    # send to onboarding if no trusted device registered yet
-    from app.models import StudentDevice
     has_device = StudentDevice.query.filter_by(
         student_id=current_user.id, trusted=True
     ).first()
@@ -36,6 +43,7 @@ def scan():
         return redirect(url_for('student.onboarding'))
 
     return render_template('student/scan.html')
+
 
 # ── mark_attendance ────────────────────────────────────────────────
 @student_bp.route('/mark-attendance', methods=['POST'])
@@ -49,19 +57,7 @@ def mark_attendance():
     user_agent = request.headers.get('User-Agent', 'Unknown')
     data       = request.get_json() or {}
 
-    # 1 ── IP check
-    if not is_ip_whitelisted(client_ip):
-        db.session.add(BlockedAttempt(
-            user_id=current_user.id, ip_address=client_ip,
-            user_agent=user_agent, reason='invalid_ip', attempted_data=data
-        ))
-        db.session.commit()
-        return jsonify({
-            'success': False,
-            'message': 'Access denied: You must be on school premises to mark attendance.'
-        }), 403
-
-    # 2 ── QR token check (signed token, no DB)
+    # 1 ── QR token check (signed token, no DB)
     scanned_code = data.get('qr_content', '')
     token_valid, token_reason = validate_qr_token(scanned_code)
     if not token_valid:
@@ -80,7 +76,7 @@ def mark_attendance():
             'message': msgs.get(token_reason, 'Invalid QR code.')
         }), 400
 
-    # 3 ── Device fingerprint + guard
+    # 2 ── Device fingerprint + guard
     device_fp = data.get('device_fp', '')
     guard     = verify_attendance_scan(current_user.id, device_fp, request)
 
@@ -112,10 +108,10 @@ def mark_attendance():
 
         return jsonify({
             'success': False,
-            'message': 'Access denied: You must be on school premises to mark attendance.',
+            'message': 'Attendance could not be recorded. Please try again.',
         }), 403
 
-    # 4 ── Duplicate check
+    # 3 ── Duplicate check
     today_start    = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     tomorrow_start = today_start + timedelta(days=1)
     existing = Attendance.query.filter(
@@ -129,14 +125,14 @@ def mark_attendance():
             'message': 'Attendance already recorded for today.'
         }), 400
 
-    # 5 ── Session type
+    # 4 ── Session type (class day vs personal time)
     is_personal_time = True
     if current_user.batch_id:
         batch = Batch.query.get(current_user.batch_id)
         if batch and batch.is_class_day(today_start.date()):
             is_personal_time = False
 
-    # 6 ── Write to DB
+    # 5 ── Write to DB
     try:
         attendance = Attendance(
             user_id          = current_user.id,
@@ -146,7 +142,6 @@ def mark_attendance():
             is_personal_time = is_personal_time,
             student_level    = current_user.level,
             device_fp_hash   = device_fp,
-            # qr_session_id removed — tokens are stateless, no DB session
         )
         db.session.add(attendance)
         db.session.commit()
@@ -168,6 +163,7 @@ def mark_attendance():
         'is_personal_time': is_personal_time,
     })
 
+
 # ── Onboarding ────────────────────────────────────────────────────────
 
 @student_bp.route('/onboarding')
@@ -176,12 +172,10 @@ def onboarding():
     if current_user.role != 'student':
         return redirect(url_for('instructor.dashboard'))
 
-    from app.models import StudentDevice
     has_device = StudentDevice.query.filter_by(
         student_id=current_user.id, trusted=True
     ).first()
     if has_device:
-        # Already onboarded — skip straight to scan
         return redirect(url_for('student.scan'))
 
     return render_template('student/onboarding.html')
@@ -192,7 +186,6 @@ def onboarding():
 @student_bp.route('/device/set-pin', methods=['POST'])
 @login_required
 def device_set_pin():
-    """Called from the onboarding page to set a PIN on the current device."""
     data      = request.get_json() or {}
     device_id = data.get('device_id')
     pin       = str(data.get('pin', ''))
@@ -200,32 +193,26 @@ def device_set_pin():
     if not device_id or not pin or len(pin) < 4:
         return jsonify({'success': False, 'message': 'Invalid PIN or device.'}), 400
 
-    from app.models import StudentDevice
     device = StudentDevice.query.filter_by(
         id=device_id, student_id=current_user.id
     ).first()
     if not device:
         return jsonify({'success': False, 'message': 'Device not found.'}), 404
 
-    from app.utils.device_trust import set_device_pin
     ok = set_device_pin(device_id, pin)
     if ok:
         return jsonify({'success': True, 'message': 'Device registered successfully.'})
     return jsonify({'success': False, 'message': 'Failed to set PIN.'}), 500
 
 
-# ── NEW: Verify PIN on scan ────────────────────────────────────────────────
+# ── Verify PIN on scan ────────────────────────────────────────────────
 
 @student_bp.route('/device/verify-pin', methods=['POST'])
 @login_required
 def device_verify_pin():
-    """
-    Called when a student scans from a known-but-untrusted device.
-    On success, the device is marked trusted for this session onwards.
-    """
-    data      = request.get_json() or {}
-    fp_hash   = data.get('device_fp', '')
-    pin       = str(data.get('pin', ''))
+    data    = request.get_json() or {}
+    fp_hash = data.get('device_fp', '')
+    pin     = str(data.get('pin', ''))
 
     if not fp_hash or not pin:
         return jsonify({'success': False, 'message': 'Missing device or PIN.'}), 400
@@ -235,19 +222,16 @@ def device_verify_pin():
         return jsonify({'success': True, 'message': 'Device verified.'})
     return jsonify({'success': False, 'message': 'Incorrect PIN.'}), 401
 
+
+# ── Attendance history ────────────────────────────────────────────────
+
 @student_bp.route('/history')
 @login_required
 def history():
-    """
-    Shows student their attendance + absence history grouped by month,
-    paginated by month groups (3 months per page).
-    Summary pill counts always reflect the full record, not just the current page.
-    """
     if current_user.role != 'student':
         flash("Access denied.", "error")
         return redirect(url_for('instructor.dashboard'))
 
-    # ── Fetch both tables ────────────────────────────────────────────
     attendances = Attendance.query.filter_by(
         user_id=current_user.id
     ).order_by(Attendance.timestamp.desc()).all()
@@ -256,7 +240,6 @@ def history():
         user_id=current_user.id
     ).order_by(Absence.date.desc()).all()
 
-    # ── Early return if no history at all ───────────────────────────
     if not attendances and not absences:
         return render_template(
             'student/history.html',
@@ -267,52 +250,45 @@ def history():
             no_history=True,
         )
 
-    # ── Merge into a unified list ────────────────────────────────────
     records = []
-
     for a in attendances:
         records.append({
-            'type':             'present',
-            'course_code':      a.course_code,
+            'type'            : 'present',
+            'course_code'     : a.course_code,
             'is_personal_time': a.is_personal_time,
-            'sort_dt':          a.timestamp,
-            'display_date':     a.timestamp.strftime('%d %B %Y, %I:%M %p'),
-            'day_name':         a.timestamp.strftime('%A'),
-            'month_key':        a.timestamp.strftime('%B %Y'),
+            'sort_dt'         : a.timestamp,
+            'display_date'    : a.timestamp.strftime('%d %B %Y, %I:%M %p'),
+            'day_name'        : a.timestamp.strftime('%A'),
+            'month_key'       : a.timestamp.strftime('%B %Y'),
         })
-
     for ab in absences:
         dt = _dt.combine(ab.date, _dt.min.time())
         records.append({
-            'type':             'absent',
-            'course_code':      'General Attendance',
+            'type'            : 'absent',
+            'course_code'     : 'General Attendance',
             'is_personal_time': False,
-            'sort_dt':          dt,
-            'display_date':     ab.date.strftime('%d %B %Y'),
-            'day_name':         ab.date.strftime('%A'),
-            'month_key':        ab.date.strftime('%B %Y'),
+            'sort_dt'         : dt,
+            'display_date'    : ab.date.strftime('%d %B %Y'),
+            'day_name'        : ab.date.strftime('%A'),
+            'month_key'       : ab.date.strftime('%B %Y'),
         })
 
-    # Sort newest first
     records.sort(key=lambda r: r['sort_dt'], reverse=True)
 
-    # ── Group all records by month (used for grand total pills) ──────
     all_grouped = {}
     for record in records:
         all_grouped.setdefault(record['month_key'], []).append(record)
 
-    # ── Paginate by month group ──────────────────────────────────────
-    month_keys   = list(all_grouped.keys())  # already sorted newest-first
+    month_keys   = list(all_grouped.keys())
     total_months = len(month_keys)
     total_pages  = max(1, ceil(total_months / HISTORY_MONTHS_PER_PAGE))
 
-    # Clamp page to valid range
     page = request.args.get('page', 1, type=int)
     page = max(1, min(page, total_pages))
 
-    start            = (page - 1) * HISTORY_MONTHS_PER_PAGE
-    page_keys        = month_keys[start:start + HISTORY_MONTHS_PER_PAGE]
-    grouped_records  = {k: all_grouped[k] for k in page_keys}
+    start           = (page - 1) * HISTORY_MONTHS_PER_PAGE
+    page_keys       = month_keys[start:start + HISTORY_MONTHS_PER_PAGE]
+    grouped_records = {k: all_grouped[k] for k in page_keys}
 
     return render_template(
         'student/history.html',
@@ -324,32 +300,7 @@ def history():
     )
 
 
-@student_bp.route('/debug-ip')
-@login_required
-def debug_ip():
-    """Temporary route to debug IP detection."""
-    from app.utils.ip_validation import get_client_ip, is_ip_whitelisted
-
-    client_ip   = get_client_ip()
-    whitelisted = is_ip_whitelisted(client_ip)
-    bypass_list  = current_app.config.get('IP_WHITELIST_BYPASS', [])
-
-    html = f"""
-    <html><head><title>IP Debug</title></head>
-    <body style="font-family: Arial; padding: 20px;">
-        <h2>🔍 IP Detection Debug</h2>
-        <div style="background: #f0f0f0; padding: 15px; border-radius: 5px;">
-            <p><strong>Your detected IP:</strong> <span style="color: blue;">{client_ip}</span></p>
-            <p><strong>Is whitelisted?</strong> <span style="color: {'green' if whitelisted else 'red'};">{whitelisted}</span></p>
-            <h3>Bypass List:</h3><ul>
-    """
-    for ip in bypass_list:
-        highlight = " <strong>⬅️ THIS IS YOU!</strong>" if ip == client_ip else ""
-        html += f"<li>{ip}{highlight}</li>"
-
-    html += """</ul><p><a href="/student/scan">⬅️ Back to Scanner</a></p></div></body></html>"""
-    return html
-
+# ── Device registration ───────────────────────────────────────────────
 
 @student_bp.route('/device/register', methods=['POST'])
 @login_required
@@ -361,7 +312,6 @@ def device_register():
         return jsonify({'success': False, 'message': 'No fingerprint received.'}), 400
 
     from app.utils.device_trust import get_or_register_device
-    from app.models import StudentDevice
 
     ip         = get_client_ip()
     user_agent = request.headers.get('User-Agent', '')
@@ -373,8 +323,6 @@ def device_register():
             'message': 'Device limit reached. Contact your instructor.'
         }), 403
 
-    # Check if they have OTHER trusted devices already
-    # (returning student on new browser/fingerprint)
     other_trusted = StudentDevice.query.filter(
         StudentDevice.student_id == current_user.id,
         StudentDevice.trusted    == True,
@@ -389,26 +337,20 @@ def device_register():
     })
 
 
+# ── Device recovery ───────────────────────────────────────────────────
+
 @student_bp.route('/device/recover', methods=['POST'])
-@login_required  
+@login_required
 def device_recover():
-    """
-    Called when a student has a new fingerprint (cleared browser, new browser)
-    but knows their PIN from a previous device.
-    Verifies PIN against ANY of their existing trusted devices,
-    then registers the new fingerprint as trusted.
-    """
-    data         = request.get_json() or {}
-    new_fp       = data.get('device_fp', '')
-    pin          = str(data.get('pin', ''))
+    data   = request.get_json() or {}
+    new_fp = data.get('device_fp', '')
+    pin    = str(data.get('pin', ''))
 
     if not new_fp or not pin:
         return jsonify({'success': False, 'message': 'Missing data.'}), 400
 
-    from app.models import StudentDevice
     from werkzeug.security import check_password_hash
 
-    # Check PIN against ALL their existing devices
     existing_devices = StudentDevice.query.filter_by(
         student_id=current_user.id
     ).all()
@@ -425,10 +367,6 @@ def device_recover():
             'message': 'Incorrect PIN. If you forgot your PIN, contact your instructor.'
         }), 401
 
-    # PIN matched — check if we can add this new fingerprint
-    existing_count = len(existing_devices)
-
-    # Check if this fingerprint already exists 
     already_exists = StudentDevice.query.filter_by(
         student_id=current_user.id,
         fingerprint_hash=new_fp
@@ -439,28 +377,24 @@ def device_recover():
         db.session.commit()
         return jsonify({'success': True, 'message': 'Device re-verified.'})
 
-    if existing_count >= 2:
-        # Replace the OLDEST untrusted device, or oldest overall
+    if len(existing_devices) >= 2:
         oldest = StudentDevice.query.filter_by(
             student_id=current_user.id
         ).order_by(StudentDevice.created_at.asc()).first()
-
         oldest.fingerprint_hash = new_fp
         oldest.trusted          = True
         oldest.last_seen_at     = datetime.utcnow()
-        oldest.pin_hash         = pin_matched_device.pin_hash  # carry PIN over
+        oldest.pin_hash         = pin_matched_device.pin_hash
         db.session.commit()
         return jsonify({'success': True, 'message': 'Device recovered successfully.'})
 
-    # Under limit — just add it
-    from app.utils.device_trust import get_or_register_device, trust_device
-    info = get_or_register_device(
+    from app.utils.device_trust import get_or_register_device
+    info       = get_or_register_device(
         current_user.id, new_fp,
         request.headers.get('User-Agent', ''),
         get_client_ip()
     )
-    # Carry the PIN over from the matched device
-    new_device = StudentDevice.query.get(info['device_id'])
+    new_device          = StudentDevice.query.get(info['device_id'])
     new_device.pin_hash = pin_matched_device.pin_hash
     new_device.trusted  = True
     db.session.commit()
