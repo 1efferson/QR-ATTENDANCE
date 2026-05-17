@@ -215,6 +215,10 @@ class Attendance(db.Model):
     # e.g. beginner scans won't count toward intermediate attendance %.
     student_level    = db.Column(db.String(50), nullable=True)
 
+    # device hash and qr session id
+    device_fp_hash = db.Column(db.String(64), nullable=True, index=True)
+   
+
     __table_args__ = (
         # Using an Index with unique=True and text() safely enforces the daily 
         # limit in PostgreSQL without triggering the "unnamed column" error.
@@ -329,3 +333,83 @@ class BatchException(db.Model):
 
     def __repr__(self):
         return f'<BatchException batch={self.batch_id} date={self.date} reason={self.name}>'
+    
+class QRSession(db.Model):
+    """
+    A short-lived token tied to a live class session.
+    The instructor's display page polls for a new one every 90s.
+    Students scan it; the token is validated then marked used.
+    """
+    __tablename__ = 'qr_sessions'
+
+    id          = db.Column(db.Integer, primary_key=True)
+    token       = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    batch_id    = db.Column(db.Integer, db.ForeignKey('batches.id'), nullable=False)
+    created_by  = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
+    expires_at  = db.Column(db.DateTime, nullable=False, index=True)
+    is_active   = db.Column(db.Boolean, default=True)  # instructor ends session
+
+    __table_args__ = (
+        Index('ix_qr_sessions_token_expires', 'token', 'expires_at'),
+    )
+
+    @property
+    def is_valid(self):
+        return self.is_active and datetime.utcnow() < self.expires_at
+
+    def __repr__(self):
+        return f'<QRSession batch={self.batch_id} valid={self.is_valid}>'
+    
+
+class StudentDevice(db.Model):
+    """
+    One row per registered phone per student.
+    Max 2 devices per student — enforced in device_trust.py.
+    """
+    __tablename__ = 'student_devices'
+
+    id               = db.Column(db.Integer, primary_key=True)
+    student_id       = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    fingerprint_hash = db.Column(db.String(64), nullable=False)
+    device_name      = db.Column(db.String(120), nullable=True)   # "Jefferson's iPhone"
+    user_agent       = db.Column(db.String(300), nullable=True)
+    pin_hash         = db.Column(db.String(256), nullable=True)    # hashed 6-digit PIN
+    passkey_id       = db.Column(db.String(256), unique=True, nullable=True)
+    trusted          = db.Column(db.Boolean, default=False)
+    first_seen_ip    = db.Column(db.String(45), nullable=True)
+    last_seen_ip     = db.Column(db.String(45), nullable=True)
+    last_seen_at     = db.Column(db.DateTime, nullable=True)
+    created_at       = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('student_id', 'fingerprint_hash', name='uq_student_device'),
+        Index('ix_student_devices_fp', 'fingerprint_hash'),
+        Index('ix_student_devices_student', 'student_id'),
+    )
+
+    def __repr__(self):
+        return f'<StudentDevice student={self.student_id} trusted={self.trusted}>'
+    
+
+class InstructorWhitelist(db.Model):
+    """
+    Admin pre-approves instructor emails here.
+    When they sign in with Google, their account is auto-created.
+    """
+    __tablename__ = 'instructor_whitelist'
+
+    id                 = db.Column(db.Integer, primary_key=True)
+    email              = db.Column(db.String(120), nullable=False, unique=True)
+    name               = db.Column(db.String(100), nullable=False)
+    is_registered      = db.Column(db.Boolean, default=False)
+    registered_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    registered_at      = db.Column(db.DateTime, nullable=True)
+    added_at           = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index('ix_instructor_whitelist_email', 'email'),
+    )
+
+    def __repr__(self):
+        return f'<InstructorWhitelist {self.email}>'
