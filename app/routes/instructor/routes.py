@@ -12,6 +12,20 @@ from app.models import Attendance, User, Batch
 from app import db
 import logging
 from sqlalchemy.exc import SQLAlchemyError
+from app.models import QRSession, Batch
+import time
+
+from app.utils.session_state import (
+    activate_session, deactivate_session,
+    is_session_active, verify_session_pin,
+    get_session, get_display_token
+)
+from app.utils.qr_tokens import (
+    generate_qr_token, validate_qr_token,
+    generate_display_token, verify_display_token,
+)
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -31,17 +45,24 @@ def instructor_required(f):
 # ---------------------------------------------------------------------------
 
 def _get_levels():
-    """Return levels sorted beginner → intermediate → advanced."""
+    """
+    Return levels sorted beginner → intermediate → advanced.
+    Uses a subquery to satisfy PostgreSQL's strict DISTINCT + ORDER BY rule.
+    The order column must be in the SELECT list when using DISTINCT.
+    """
     level_order = case(
         {'beginner': 1, 'intermediate': 2, 'advanced': 3},
         value=User.level,
         else_=4
     )
-    rows = db.session.query(User.level).filter(
-        User.role == 'student',
+    rows = db.session.query(
+        User.level,
+        level_order.label('sort_order') 
+    ).filter(
+        User.role  == 'student',
         User.level != None
-    ).distinct().order_by(level_order).all()
-    return [r[0] for r in rows]
+    ).distinct().order_by('sort_order').all()
+    return [r[0] for r in rows]        
 
 
 def _get_active_batches():
@@ -367,3 +388,126 @@ def run_absence_check():
                             batch_id=request.form.get('batch_id'),
                             level=request.form.get('level'),
                             days=request.form.get('days')))
+
+# ---------------------------------------------------------------------------
+# SESSION ROUTES
+# ---------------------------------------------------------------------------
+
+@instructor_bp.route('/sessions')
+@instructor_required
+def sessions_page():
+    active        = is_session_active()
+    display_token = get_display_token() if active else None
+    display_url   = url_for(
+        'instructor.public_display',
+        token=display_token,
+        _external=True
+    ) if display_token else None
+
+    return render_template(
+        'instructor/sessions.html',
+        active_session=active,
+        display_url=display_url,
+    )
+
+
+@instructor_bp.route('/session/start', methods=['POST'])
+@instructor_required
+def start_session():
+    data = request.get_json() or {}
+    pin  = str(data.get('pin', ''))
+
+    if not pin or len(pin) < 4:
+        return jsonify({'success': False, 'message': 'PIN must be 4 digits.'}), 400
+
+    # Block if session already running
+    if is_session_active():
+        return jsonify({
+            'success': False,
+            'message': 'A session is already active. End it first before starting a new one.',
+        }), 409
+
+    display_token = generate_display_token(instructor_id=current_user.id)
+    display_url   = url_for(
+        'instructor.public_display',
+        token=display_token,
+        _external=True
+    )
+    activate_session(display_token=display_token, pin=pin)
+
+    return jsonify({
+        'success'    : True,
+        'display_url': display_url,
+    })
+
+
+@instructor_bp.route('/session/qr-token', methods=['GET'])
+def refresh_qr_token():
+    """
+    Polled every 90s by the display screen.
+    Public requests authenticate via display_token query param.
+    Instructor requests authenticate via login session.
+    """
+    display_token = request.args.get('display_token', '')
+    is_public     = bool(display_token)
+
+    if is_public:
+        # Verify the cryptographic signature
+        if not verify_display_token(display_token):
+            return jsonify({'success': False, 'message': 'Invalid token.'}), 403
+
+        # Check Redis — is this exact token still the active one?
+        sess = get_session()
+        if not sess:
+            return jsonify({'success': False, 'message': 'Session ended.'}), 403
+        if sess['display_token'] != display_token:
+            return jsonify({'success': False, 'message': 'Session replaced.'}), 403
+
+        token = generate_qr_token(instructor_id=0)
+        return jsonify({'success': True, 'token': token, 'lifetime': 90})
+
+    # Instructor's own device
+    if current_user.is_anonymous or current_user.role not in ('instructor', 'admin'):
+        return jsonify({'success': False, 'message': 'Unauthorised.'}), 403
+
+    if not is_session_active():
+        return jsonify({'success': False, 'message': 'No active session.'}), 403
+
+    token = generate_qr_token(instructor_id=current_user.id)
+    return jsonify({'success': True, 'token': token, 'lifetime': 90})
+
+
+@instructor_bp.route('/session/end', methods=['POST'])
+@instructor_required
+def end_live_session():
+    data = request.get_json() or {}
+    pin  = str(data.get('pin', ''))
+
+    if not verify_session_pin(pin):
+        return jsonify({'success': False, 'message': 'Incorrect PIN.'}), 401
+
+    deactivate_session()
+    return jsonify({'success': True})
+
+
+@instructor_bp.route('/display/<token>')
+def public_display(token):
+    """
+    Public QR display — no login required.
+    Share this URL on the classroom screen.
+    """
+    if not verify_display_token(token):
+        return render_template('instructor/display_expired.html'), 403
+
+    sess = get_session()
+    if not sess or sess['display_token'] != token:
+        return render_template('instructor/display_expired.html'), 403
+
+    return render_template('instructor/public_display.html', display_token=token)
+
+
+@instructor_bp.route('/live')
+@instructor_required
+def live_session():
+    """Redirects to sessions page — sessions.html now handles everything."""
+    return redirect(url_for('instructor.sessions_page'))
