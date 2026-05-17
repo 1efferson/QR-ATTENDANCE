@@ -5,7 +5,7 @@ from wtforms import StringField, PasswordField, SubmitField
 from wtforms.validators import DataRequired, Email
 from sqlalchemy import func
 from app import db, oauth
-from app.models import User, ApprovedStudent, Batch
+from app.models import User, ApprovedStudent, Batch, StudentDevice, InstructorWhitelist
 from datetime import datetime
 import logging
 
@@ -25,11 +25,17 @@ class LoginForm(FlaskForm):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _redirect_for(user):
-    """Send each role to their home dashboard."""
+    """Send each role to their home. Students without a device go to onboarding."""
     if user.role == 'admin':
         return url_for('admin.dashboard')
     if user.role == 'instructor':
         return url_for('instructor.dashboard')
+    # Student — check if they have a registered device
+    has_device = StudentDevice.query.filter_by(
+        student_id=user.id, trusted=True
+    ).first()
+    if not has_device:
+        return url_for('student.onboarding')
     return url_for('student.scan')
 
 
@@ -78,6 +84,8 @@ def google_login():
 
 # ── Google OAuth — Step 2: handle the return ─────────────────────────────────
 
+from app.models import User, ApprovedStudent, Batch, InstructorWhitelist
+
 @auth_bp.route('/google/callback')
 def google_callback():
     try:
@@ -93,14 +101,13 @@ def google_callback():
         return redirect(url_for('auth.login'))
 
     email     = user_info['email'].strip().lower()
-    google_id = user_info.get('sub')      # Google's permanent unique user ID
+    google_id = user_info.get('sub')
 
-    # ── Case 1: user already exists → just log them in ───────────────────────
+    # ── Case 1: user already exists? ,login then ───────────────────
     user = User.query.filter(func.lower(User.email) == email).first()
 
     if user:
         if not user.google_id:
-            # First time using Google — silently link their account
             user.google_id = google_id
             db.session.commit()
             logger.info(f"Linked Google ID to existing account: {email}")
@@ -110,24 +117,48 @@ def google_callback():
         next_url = session.pop('oauth_next', None)
         return redirect(next_url or _redirect_for(user))
 
-    # ── Case 2: new user — check the approved list ────────────────────────────
+    # ── Case 1b: for new users, check instructor whitelist ───────────────────
+    approved_instructor = InstructorWhitelist.query.filter(
+        func.lower(InstructorWhitelist.email) == email,
+        InstructorWhitelist.is_registered == False
+    ).first()
+
+    if approved_instructor:
+        new_instructor = User(
+            email     = email,
+            name      = approved_instructor.name,
+            role      = 'instructor',
+            google_id = google_id,
+            batch_id  = None,
+            level     = None,
+        )
+        db.session.add(new_instructor)
+        db.session.flush()
+
+        approved_instructor.is_registered      = True
+        approved_instructor.registered_user_id = new_instructor.id
+        approved_instructor.registered_at      = datetime.utcnow()
+        db.session.commit()
+
+        login_user(new_instructor)
+        logger.info(f"New instructor registered via Google: {email}")
+        flash(f'Welcome, {new_instructor.name}! Your instructor account is ready.', 'success')
+        return redirect(url_for('instructor.dashboard'))
+
+    # ── Case 2: for new students — check student approved list ───────────────────
     approved = ApprovedStudent.query.filter(
         func.lower(ApprovedStudent.email) == email,
         ApprovedStudent.is_registered == False
     ).first()
 
     if not approved:
-        # Nicer error: distinguish "never added" from "already registered"
         already_registered = ApprovedStudent.query.filter(
             func.lower(ApprovedStudent.email) == email,
             ApprovedStudent.is_registered == True
         ).first()
 
         if already_registered:
-            flash(
-                'This email is already registered. Please sign in instead.',
-                'warning'
-            )
+            flash('This email is already registered. Please sign in instead.', 'warning')
         else:
             flash(
                 'Your Google email is not on the approved list. '
@@ -136,22 +167,20 @@ def google_callback():
             )
         return redirect(url_for('auth.login'))
 
-    # ── Auto-create the student account ──────────────────────────────────────
+    # ── Auto-create the student account ──────────────────────────────────
     batch = Batch.query.get(approved.batch_id) if approved.batch_id else None
 
     new_user = User(
         email     = email,
-        name      = approved.name,                          # Admin's approved name
+        name      = approved.name,
         role      = 'student',
         batch_id  = approved.batch_id,
-        level     = batch.current_level if batch else None, # Inherit from batch
+        level     = batch.current_level if batch else None,
         google_id = google_id,
-        # password_hash intentionally left None — Google-only account
     )
     db.session.add(new_user)
-    db.session.flush()   # Populate new_user.id before updating approved record
+    db.session.flush()
 
-    # Mark the approved slot as taken
     approved.is_registered      = True
     approved.registered_user_id = new_user.id
     approved.registered_at      = datetime.utcnow()
@@ -162,9 +191,9 @@ def google_callback():
         f"New student registered via Google: {email} "
         f"→ Batch '{batch.name if batch else 'None'}' / {new_user.level}"
     )
-    flash(f'Welcome, {new_user.name}! Your account has been created.', 'success')
-    next_url = session.pop('oauth_next', None)
-    return redirect(next_url or url_for('student.scan'))
+    flash(f'Welcome, {new_user.name}! Let\'s get your phone set up.', 'success')
+    session.pop('oauth_next', None)
+    return redirect(url_for('student.onboarding'))
 
 
 # ── Logout ────────────────────────────────────────────────────────────────────

@@ -1,104 +1,126 @@
 {% extends "base.html" %}
-{% block title %}Create Instructor{% endblock %}
+{% block title %}Add Instructor{% endblock %}
 
 {% block content %}
 <div class="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
-    <!-- Header -->
-    <div class="mb-8">
-        <a href="{{ url_for('admin.dashboard') }}" class="text-indigo-600 hover:text-indigo-800 flex items-center mb-4">
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
-            </svg>
-            Back to Dashboard
+
+  <!-- Header -->
+  <div class="mb-8">
+    <a href="{{ url_for('admin.dashboard') }}"
+       class="text-indigo-600 hover:text-indigo-800 flex items-center mb-4 text-sm">
+      <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+      </svg>
+      Back to Dashboard
+    </a>
+    <h1 class="text-2xl font-bold text-gray-900">Add Instructor</h1>
+    <p class="text-sm text-gray-500 mt-1">
+      They'll receive an invite and sign in with Google — no password needed.
+    </p>
+  </div>
+
+  <!-- Form card -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+    <form method="POST" action="{{ url_for('admin.create_instructor') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="space-y-5">
+        <div>
+          <label for="name" class="block text-sm font-medium text-gray-700 mb-1">
+            Full name <span class="text-red-500">*</span>
+          </label>
+          <input type="text" id="name" name="name" required
+                 placeholder="e.g. Kwame Mensah"
+                 class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
+                        focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+        </div>
+
+        <div>
+          <label for="email" class="block text-sm font-medium text-gray-700 mb-1">
+            Google email address <span class="text-red-500">*</span>
+          </label>
+          <input type="email" id="email" name="email" required
+                 placeholder="kwame@gmail.com"
+                 class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
+                        focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+          <p class="text-xs text-gray-400 mt-1">
+            Must match the Google account they'll use to sign in.
+          </p>
+        </div>
+      </div>
+
+      <!-- Info box -->
+      <div class="mt-5 bg-indigo-50 border border-indigo-100 rounded-lg p-4">
+        <p class="text-xs font-semibold text-indigo-700 mb-1">What happens next</p>
+        <ol class="text-xs text-indigo-600 space-y-1 list-decimal list-inside">
+          <li>Share the link <strong>/auth/register</strong> with the instructor.</li>
+          <li>They click <strong>Sign in with Google</strong> using the email above.</li>
+          <li>Their account is created automatically — no password, no extra steps.</li>
+        </ol>
+      </div>
+
+      <div class="flex gap-3 mt-6">
+        <button type="submit"
+                class="flex-1 py-2.5 bg-indigo-600 text-white text-sm font-medium
+                       rounded-lg hover:bg-indigo-700 transition">
+          Add to whitelist →
+        </button>
+        <a href="{{ url_for('admin.dashboard') }}"
+           class="flex-1 text-center py-2.5 bg-gray-100 text-gray-700 text-sm
+                  font-medium rounded-lg hover:bg-gray-200 transition">
+          Cancel
         </a>
-        <h1 class="text-3xl font-bold text-gray-900">Create Instructor Account</h1>
-        <p class="text-gray-600 mt-1">Add a new instructor to the system</p>
-    </div>
+      </div>
+    </form>
+  </div>
 
-    <!-- Form -->
-    <div class="bg-white rounded-lg shadow p-6">
-        <form method="POST" action="{{ url_for('admin.create_instructor') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <!-- Full Name -->
-            <div class="mb-6">
-                <label for="name" class="block text-sm font-medium text-gray-700 mb-2">
-                    Full Name <span class="text-red-500">*</span>
-                </label>
-                <input type="text" id="name" name="name" required
-                       placeholder="e.g., John Smith"
-                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-            </div>
+  <!-- Pending invites -->
+  {% if pending %}
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-4">
+    <h2 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+      <span class="w-2 h-2 rounded-full bg-yellow-400 inline-block"></span>
+      Awaiting sign-in ({{ pending | length }})
+    </h2>
+    <ul class="divide-y divide-gray-50">
+      {% for i in pending %}
+      <li class="py-2.5 flex items-center justify-between">
+        <div>
+          <p class="text-sm font-medium text-gray-800">{{ i.name }}</p>
+          <p class="text-xs text-gray-400">{{ i.email }}</p>
+        </div>
+        <span class="text-xs bg-yellow-50 text-yellow-700 border border-yellow-200
+                     px-2 py-0.5 rounded-full">
+          Pending
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
 
-            <!-- Email -->
-            <div class="mb-6">
-                <label for="email" class="block text-sm font-medium text-gray-700 mb-2">
-                    Email Address <span class="text-red-500">*</span>
-                </label>
-                <input type="email" id="email" name="email" required
-                       placeholder="e.g., instructor@school.com"
-                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-            </div>
+  <!-- Registered instructors -->
+  {% if registered %}
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+    <h2 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+      <span class="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
+      Active instructors ({{ registered | length }})
+    </h2>
+    <ul class="divide-y divide-gray-50">
+      {% for i in registered %}
+      <li class="py-2.5 flex items-center justify-between">
+        <div>
+          <p class="text-sm font-medium text-gray-800">{{ i.name }}</p>
+          <p class="text-xs text-gray-400">{{ i.email }}</p>
+        </div>
+        <span class="text-xs bg-green-50 text-green-700 border border-green-200
+                     px-2 py-0.5 rounded-full">
+          Active
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
 
-            <!-- Password -->
-            <div class="mb-6">
-                <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
-                    Password <span class="text-red-500">*</span>
-                </label>
-                <div class="relative">
-                    <input type="password" id="password" name="password" required
-                           placeholder="Minimum 6 characters"
-                           minlength="6"
-                           class="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-                    <button type="button" onclick="togglePassword()" 
-                            class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-600 hover:text-gray-800">
-                        <span id="toggleIcon">👁️</span>
-                    </button>
-                </div>
-                <p class="text-sm text-gray-500 mt-1">The instructor can change this password after logging in</p>
-            </div>
-
-            <!-- Info Box -->
-            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                <div class="flex">
-                    <svg class="w-5 h-5 text-blue-600 mr-3 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
-                    <div class="text-sm text-blue-800">
-                        <p class="font-medium mb-1">Instructor Account Details:</p>
-                        <ul class="list-disc list-inside space-y-1 ml-2">
-                            <li>Instructors can generate QR codes for attendance</li>
-                            <li>They can view attendance reports for their courses</li>
-                            <li>They cannot access admin functions or batch management</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Buttons -->
-            <div class="flex gap-3">
-                <button type="submit" class="flex-1 px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition">
-                    Create Instructor Account
-                </button>
-                <a href="{{ url_for('admin.dashboard') }}" class="flex-1 text-center px-6 py-3 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition">
-                    Cancel
-                </a>
-            </div>
-        </form>
-    </div>
 </div>
-
-<script>
-function togglePassword() {
-    const passwordField = document.getElementById('password');
-    const toggleIcon = document.getElementById('toggleIcon');
-    
-    if (passwordField.type === 'password') {
-        passwordField.type = 'text';
-        toggleIcon.textContent = '🙈';
-    } else {
-        passwordField.type = 'password';
-        toggleIcon.textContent = '👁️';
-    }
-}
-</script>
 {% endblock %}
