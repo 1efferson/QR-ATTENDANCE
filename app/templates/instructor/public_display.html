@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Attendance — Scan QR</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background: #1e1b4b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: system-ui, sans-serif;
+      color: #fff;
+    }
+
+    .wrap {
+      text-align: center;
+      padding: 2rem 1.5rem;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    .school-name {
+      font-size: .75rem;
+      font-weight: 600;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      color: #a5b4fc;
+      margin-bottom: 1.5rem;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: .35rem;
+    }
+
+    .subtitle {
+      font-size: .9rem;
+      color: #c7d2fe;
+      margin-bottom: 2rem;
+    }
+
+    /* QR box */
+    #qr-canvas {
+      display: inline-block;
+      background: #fff;
+      border-radius: 20px;
+      padding: 18px;
+      box-shadow: 0 0 0 8px rgba(165,180,252,.15),
+                  0 24px 48px rgba(0,0,0,.4);
+      margin-bottom: 1.5rem;
+    }
+
+    /* Countdown ring */
+    .countdown-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: .6rem;
+      margin-bottom: 1.75rem;
+    }
+
+    .ring {
+      width: 36px;
+      height: 36px;
+    }
+
+    .ring-bg   { fill: none; stroke: rgba(255,255,255,.15); stroke-width: 4; }
+    .ring-fill {
+      fill: none;
+      stroke: #818cf8;
+      stroke-width: 4;
+      stroke-linecap: round;
+      stroke-dasharray: 88;       /* 2π × 14 ≈ 88 */
+      stroke-dashoffset: 0;
+      transform: rotate(-90deg);
+      transform-origin: 50% 50%;
+      transition: stroke-dashoffset 1s linear, stroke .3s;
+    }
+    .ring-fill.urgent { stroke: #f87171; }
+
+    #countdown-text {
+      font-size: .875rem;
+      color: #c7d2fe;
+      font-variant-numeric: tabular-nums;
+    }
+    #countdown-text.urgent { color: #fca5a5; font-weight: 700; }
+
+    /* Status */
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      font-size: .75rem;
+      font-weight: 600;
+      padding: 4px 14px;
+      border-radius: 99px;
+      margin-bottom: 1rem;
+    }
+    .status-active { background: rgba(52,211,153,.15); color: #6ee7b7; }
+    .status-error  { background: rgba(239,68,68,.15);  color: #fca5a5; }
+    .status-dot    { width: 6px; height: 6px; border-radius: 50%;
+                     background: currentColor; }
+
+    /* Instructions */
+    .instructions {
+      font-size: .8rem;
+      color: #818cf8;
+      line-height: 1.6;
+    }
+
+    .instructions strong { color: #a5b4fc; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="school-name">QR-Attend · Live Attendance</p>
+
+  <h1>Scan to Mark Present</h1>
+  <p class="subtitle">Open your phone camera and point it at the code below</p>
+
+  <span id="qr-status" class="status status-active">
+    <span class="status-dot"></span>
+    Session active
+  </span>
+
+  <br>
+
+  <div id="qr-canvas"></div>
+
+  <div class="countdown-wrap">
+    <svg class="ring" viewBox="0 0 32 32">
+      <circle class="ring-bg"   cx="16" cy="16" r="14"/>
+      <circle class="ring-fill" cx="16" cy="16" r="14" id="ringFill"/>
+    </svg>
+    <span id="countdown-text">Refreshing in 90s</span>
+  </div>
+
+  <p class="instructions">
+    <strong>One scan per student · School network only</strong><br>
+    QR code refreshes automatically every 90 seconds
+  </p>
+
+</div>
+
+<script>
+  const LIFETIME   = 90;
+  const CIRCUMFERENCE = 2 * Math.PI * 14; // ≈ 88
+
+  let countdownInterval = null;
+  // Pull display_token from the URL path so we can pass it back to the server
+  const displayToken = '{{ display_token }}';
+
+  async function fetchAndRender() {
+    try {
+      const res  = await fetch(
+        `/instructor/session/qr-token?display_token=${encodeURIComponent(displayToken)}`,
+        { credentials: 'omit' }   // public route — no cookies needed
+      );
+      const data = await res.json();
+
+      if (!data.success) {
+        showError('Session ended or expired.');
+        return;
+      }
+
+      renderQR(data.token);
+      startCountdown(LIFETIME);
+      setTimeout(fetchAndRender, (LIFETIME - 2) * 1000);
+
+    } catch {
+      showError('Connection lost. Retrying…');
+      setTimeout(fetchAndRender, 5000);
+    }
+  }
+
+  function renderQR(token) {
+    const el = document.getElementById('qr-canvas');
+    el.innerHTML = '';
+    new QRCode(el, {
+      text        : token,
+      width       : 280,
+      height      : 280,
+      colorDark   : '#1e1b4b',
+      colorLight  : '#ffffff',
+      correctLevel: QRCode.CorrectLevel.H,
+    });
+    setStatus('active');
+  }
+
+  function startCountdown(seconds) {
+    clearInterval(countdownInterval);
+    let remaining  = seconds;
+    const ring     = document.getElementById('ringFill');
+    const text     = document.getElementById('countdown-text');
+
+    function tick() {
+      const frac   = remaining / LIFETIME;
+      const offset = CIRCUMFERENCE * (1 - frac);
+      ring.style.strokeDashoffset = offset;
+
+      text.textContent = `Refreshing in ${remaining}s`;
+
+      const urgent = remaining <= 10;
+      ring.classList.toggle('urgent', urgent);
+      text.classList.toggle('urgent', urgent);
+
+      if (remaining <= 0) {
+        clearInterval(countdownInterval);
+        text.textContent = 'Refreshing…';
+        return;
+      }
+      remaining--;
+    }
+
+    tick();
+    countdownInterval = setInterval(tick, 1000);
+  }
+
+  function setStatus(type) {
+    const el = document.getElementById('qr-status');
+    el.className = `status status-${type}`;
+    el.innerHTML = type === 'active'
+      ? '<span class="status-dot"></span> Session active'
+      : '<span class="status-dot"></span> Session ended';
+  }
+
+  function showError(msg) {
+    setStatus('error');
+    document.getElementById('countdown-text').textContent = msg;
+    clearInterval(countdownInterval);
+  }
+
+  fetchAndRender();
+</script>
+</body>
+</html>

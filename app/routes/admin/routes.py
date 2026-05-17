@@ -15,7 +15,7 @@ from flask_login import login_required, current_user
 from functools import wraps
 from sqlalchemy import func, and_
 from app import db
-from app.models import User, Batch, ApprovedStudent, Attendance, BatchSchedule, BatchException
+from app.models import User, Batch, ApprovedStudent, Attendance, BatchSchedule, BatchException, InstructorWhitelist
 from datetime import datetime, timedelta
 from app.sheets_sync import create_sheet_tab, append_student_to_sheet
 import threading
@@ -712,39 +712,35 @@ def students():
 @admin_bp.route('/create-instructor', methods=['GET', 'POST'])
 @admin_required
 def create_instructor():
-    """Admin can create instructor accounts"""
     if request.method == 'POST':
-        name = request.form.get('name', '').strip()
-        email = request.form.get('email', '').strip()
-        password = request.form.get('password', '').strip()
-        
-        if not all([name, email, password]):
-            flash('All fields required', 'error')
-            return redirect(url_for('admin.create_instructor'))
-        
-        # Check if email exists
-        if User.query.filter_by(email=email).first():
-            flash('Email already registered', 'error')
-            return redirect(url_for('admin.create_instructor'))
-        
-        # Create instructor
-        instructor = User(
-            name=name,
-            email=email,
-            role='instructor',
-            level=None,
-            batch_id=None
-        )
-        instructor.set_password(password)
-        
-        db.session.add(instructor)
-        db.session.commit()
-        
-        flash(f'✓ Instructor {name} created successfully!', 'success')
-        return redirect(url_for('admin.dashboard'))
-    
-    return render_template('admin/create_instructor.html')
+        name  = request.form.get('name', '').strip()
+        email = request.form.get('email', '').strip().lower()
 
+        if not name or not email:
+            flash('Both name and email are required.', 'error')
+            return redirect(url_for('admin.create_instructor'))
+
+        if User.query.filter_by(email=email).first():
+            flash('An account with this email already exists.', 'error')
+            return redirect(url_for('admin.create_instructor'))
+
+        if InstructorWhitelist.query.filter_by(email=email).first():
+            flash('This email is already on the instructor whitelist.', 'warning')
+            return redirect(url_for('admin.create_instructor'))
+
+        db.session.add(InstructorWhitelist(name=name, email=email))
+        db.session.commit()
+
+        flash(
+            f'✓ {name} added. Ask them to sign in with Google at /auth/register.',
+            'success'
+        )
+        return redirect(url_for('admin.dashboard'))
+
+    pending = InstructorWhitelist.query.filter_by(is_registered=False).all()
+    registered = InstructorWhitelist.query.filter_by(is_registered=True).all()
+    return render_template('admin/create_instructor.html',
+                           pending=pending, registered=registered)
 
 # ── Global holidays ──────────────────────────────────────────────────────────
 

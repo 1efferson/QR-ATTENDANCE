@@ -11,6 +11,10 @@ from datetime import datetime, timedelta
 from sqlalchemy.exc import IntegrityError
 from math import ceil
 from datetime import datetime as _dt
+from app.utils.attendance_guard import verify_attendance_scan
+from app.utils.device_trust import set_device_pin, verify_device_pin
+from app.utils.qr_tokens import validate_qr_token
+from app.models import StudentDevice
 
 logger = logging.getLogger(__name__)
 
@@ -19,121 +23,217 @@ HISTORY_MONTHS_PER_PAGE = 2
 @student_bp.route('/scan')
 @login_required
 def scan():
-    """QR Code scanner page for students."""
     if current_user.role != 'student':
         flash("Access denied: Students only.", "error")
         return redirect(url_for('instructor.dashboard'))
+
+    # send to onboarding if no trusted device registered yet
+    from app.models import StudentDevice
+    has_device = StudentDevice.query.filter_by(
+        student_id=current_user.id, trusted=True
+    ).first()
+    if not has_device:
+        return redirect(url_for('student.onboarding'))
+
     return render_template('student/scan.html')
 
+# ── mark_attendance ────────────────────────────────────────────────
 @student_bp.route('/mark-attendance', methods=['POST'])
 @csrf.exempt
 @login_required
 def mark_attendance():
-    """
-    Highly concurrent attendance marking logic.
-    Optimized for fast DB writes and index usage.
-    """
     if current_user.role != 'student':
         return jsonify({'success': False, 'message': 'Access denied'}), 403
- 
+
     client_ip  = get_client_ip()
     user_agent = request.headers.get('User-Agent', 'Unknown')
     data       = request.get_json() or {}
- 
-    # 1. IP Whitelisting (Geofencing)
+
+    # 1 ── IP check
     if not is_ip_whitelisted(client_ip):
-        # Consider logging blocked attempts asynchronously or in batches 
-        # if this becomes a DDoS vector, but this is fine for now.
         db.session.add(BlockedAttempt(
-            user_id=current_user.id,
-            ip_address=client_ip,
-            user_agent=user_agent,
-            reason='invalid_ip',
-            attempted_data=data
+            user_id=current_user.id, ip_address=client_ip,
+            user_agent=user_agent, reason='invalid_ip', attempted_data=data
         ))
         db.session.commit()
         return jsonify({
             'success': False,
             'message': 'Access denied: You must be on school premises to mark attendance.'
         }), 403
- 
-    # 2. QR Code Validation
-    scanned_code  = data.get('qr_content')
-    master_secret = current_app.config.get('MASTER_QR_SECRET')
- 
-    if not scanned_code or scanned_code.strip() != master_secret:
+
+    # 2 ── QR token check (signed token, no DB)
+    scanned_code = data.get('qr_content', '')
+    token_valid, token_reason = validate_qr_token(scanned_code)
+    if not token_valid:
         db.session.add(BlockedAttempt(
-            user_id=current_user.id,
-            ip_address=client_ip,
-            user_agent=user_agent,
-            reason='invalid_qr',
+            user_id=current_user.id, ip_address=client_ip,
+            user_agent=user_agent, reason=f'invalid_qr:{token_reason}',
             attempted_data=data
         ))
         db.session.commit()
-        return jsonify({'success': False, 'message': 'Invalid QR Code.'}), 400
- 
-    # 3. Level-Aware Duplicate Check (Index-Optimized)
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        msgs = {
+            'invalid_or_expired': 'QR code expired — ask your instructor to refresh.',
+            'missing_token'     : 'No QR code received.',
+        }
+        return jsonify({
+            'success': False,
+            'message': msgs.get(token_reason, 'Invalid QR code.')
+        }), 400
+
+    # 3 ── Device fingerprint + guard
+    device_fp = data.get('device_fp', '')
+    guard     = verify_attendance_scan(current_user.id, device_fp, request)
+
+    if not guard['allowed']:
+        action = guard.get('action', '')
+
+        if action == 'prompt_onboarding':
+            return jsonify({
+                'success'  : False,
+                'action'   : 'onboarding',
+                'device_id': guard.get('device_id'),
+                'message'  : 'Please complete device setup first.',
+            }), 403
+
+        if action == 'prompt_pin':
+            return jsonify({
+                'success'  : False,
+                'action'   : 'verify_pin',
+                'device_id': guard.get('device_id'),
+                'has_pin'  : guard.get('has_pin', False),
+                'message'  : 'Please verify your device PIN.',
+            }), 403
+
+        if action == 'device_limit_reached':
+            return jsonify({
+                'success': False,
+                'message': 'Device limit reached. Contact your instructor to manage devices.',
+            }), 403
+
+        return jsonify({
+            'success': False,
+            'message': 'Access denied: You must be on school premises to mark attendance.',
+        }), 403
+
+    # 4 ── Duplicate check
+    today_start    = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     tomorrow_start = today_start + timedelta(days=1)
-    
-    # This range query allows PostgreSQL to use a B-Tree index on the timestamp column
     existing = Attendance.query.filter(
-        Attendance.user_id == current_user.id,
+        Attendance.user_id   == current_user.id,
         Attendance.timestamp >= today_start,
-        Attendance.timestamp < tomorrow_start, 
+        Attendance.timestamp <  tomorrow_start,
     ).first()
- 
     if existing:
         return jsonify({
-            'success': False, 
-            'message': f'Attendance already recorded for {current_user.level} level today.'
+            'success': False,
+            'message': 'Attendance already recorded for today.'
         }), 400
- 
-    # 4. Determine Session Type
+
+    # 5 ── Session type
     is_personal_time = True
-    batch = None
     if current_user.batch_id:
-        # Optimization tip: If Batch doesn't change often, you could cache this check
         batch = Batch.query.get(current_user.batch_id)
         if batch and batch.is_class_day(today_start.date()):
             is_personal_time = False
- 
-    # 5. Record in Database with Race Condition Handling
+
+    # 6 ── Write to DB
     try:
         attendance = Attendance(
-            user_id=current_user.id,
-            course_code="General Attendance",
-            ip_address=client_ip,
-            user_agent=user_agent,
-            is_personal_time=is_personal_time,
-            student_level=current_user.level
+            user_id          = current_user.id,
+            course_code      = "General Attendance",
+            ip_address       = client_ip,
+            user_agent       = user_agent,
+            is_personal_time = is_personal_time,
+            student_level    = current_user.level,
+            device_fp_hash   = device_fp,
+            # qr_session_id removed — tokens are stateless, no DB session
         )
         db.session.add(attendance)
         db.session.commit()
-        
     except IntegrityError:
-        # This catches the race condition where two requests hit the DB at the exact same time
         db.session.rollback()
         return jsonify({
-            'success': False, 
-            'message': f'Attendance already recorded for {current_user.level} level today.'
+            'success': False,
+            'message': 'Attendance already recorded for today.'
         }), 400
-        
     except Exception as e:
         db.session.rollback()
         logger.error(f"DB Error during scan for user {current_user.id}: {e}")
         return jsonify({'success': False, 'message': 'Database error. Try again.'}), 500
- 
-    # 6. Google Sheets Sync 
-    # REMOVED: Defer this entirely to your 9 PM scheduler! 
-    # The HTTP response should return immediately after the DB commit.
- 
+
     message = "Attendance marked!" if not is_personal_time else "Personal scan recorded."
     return jsonify({
-        'success': True,
-        'message': f'{message} Welcome, {current_user.name}.',
-        'is_personal_time': is_personal_time
+        'success'         : True,
+        'message'         : f'{message} Welcome, {current_user.name}.',
+        'is_personal_time': is_personal_time,
     })
+
+# ── Onboarding ────────────────────────────────────────────────────────
+
+@student_bp.route('/onboarding')
+@login_required
+def onboarding():
+    if current_user.role != 'student':
+        return redirect(url_for('instructor.dashboard'))
+
+    from app.models import StudentDevice
+    has_device = StudentDevice.query.filter_by(
+        student_id=current_user.id, trusted=True
+    ).first()
+    if has_device:
+        # Already onboarded — skip straight to scan
+        return redirect(url_for('student.scan'))
+
+    return render_template('student/onboarding.html')
+
+
+# ── Set PIN for a device ──────────────────────────────────────────────
+
+@student_bp.route('/device/set-pin', methods=['POST'])
+@login_required
+def device_set_pin():
+    """Called from the onboarding page to set a PIN on the current device."""
+    data      = request.get_json() or {}
+    device_id = data.get('device_id')
+    pin       = str(data.get('pin', ''))
+
+    if not device_id or not pin or len(pin) < 4:
+        return jsonify({'success': False, 'message': 'Invalid PIN or device.'}), 400
+
+    from app.models import StudentDevice
+    device = StudentDevice.query.filter_by(
+        id=device_id, student_id=current_user.id
+    ).first()
+    if not device:
+        return jsonify({'success': False, 'message': 'Device not found.'}), 404
+
+    from app.utils.device_trust import set_device_pin
+    ok = set_device_pin(device_id, pin)
+    if ok:
+        return jsonify({'success': True, 'message': 'Device registered successfully.'})
+    return jsonify({'success': False, 'message': 'Failed to set PIN.'}), 500
+
+
+# ── NEW: Verify PIN on scan ────────────────────────────────────────────────
+
+@student_bp.route('/device/verify-pin', methods=['POST'])
+@login_required
+def device_verify_pin():
+    """
+    Called when a student scans from a known-but-untrusted device.
+    On success, the device is marked trusted for this session onwards.
+    """
+    data      = request.get_json() or {}
+    fp_hash   = data.get('device_fp', '')
+    pin       = str(data.get('pin', ''))
+
+    if not fp_hash or not pin:
+        return jsonify({'success': False, 'message': 'Missing device or PIN.'}), 400
+
+    ok = verify_device_pin(current_user.id, fp_hash, pin)
+    if ok:
+        return jsonify({'success': True, 'message': 'Device verified.'})
+    return jsonify({'success': False, 'message': 'Incorrect PIN.'}), 401
 
 @student_bp.route('/history')
 @login_required
@@ -249,3 +349,120 @@ def debug_ip():
 
     html += """</ul><p><a href="/student/scan">⬅️ Back to Scanner</a></p></div></body></html>"""
     return html
+
+
+@student_bp.route('/device/register', methods=['POST'])
+@login_required
+def device_register():
+    data      = request.get_json() or {}
+    device_fp = data.get('device_fp', '')
+
+    if not device_fp:
+        return jsonify({'success': False, 'message': 'No fingerprint received.'}), 400
+
+    from app.utils.device_trust import get_or_register_device
+    from app.models import StudentDevice
+
+    ip         = get_client_ip()
+    user_agent = request.headers.get('User-Agent', '')
+    info       = get_or_register_device(current_user.id, device_fp, user_agent, ip)
+
+    if info['status'] == 'device_limit_reached':
+        return jsonify({
+            'success': False,
+            'message': 'Device limit reached. Contact your instructor.'
+        }), 403
+
+    # Check if they have OTHER trusted devices already
+    # (returning student on new browser/fingerprint)
+    other_trusted = StudentDevice.query.filter(
+        StudentDevice.student_id == current_user.id,
+        StudentDevice.trusted    == True,
+        StudentDevice.id         != info['device_id']
+    ).first()
+
+    return jsonify({
+        'success'             : True,
+        'device_id'           : info['device_id'],
+        'is_new'              : info['new_device'],
+        'is_returning_student': other_trusted is not None,
+    })
+
+
+@student_bp.route('/device/recover', methods=['POST'])
+@login_required  
+def device_recover():
+    """
+    Called when a student has a new fingerprint (cleared browser, new browser)
+    but knows their PIN from a previous device.
+    Verifies PIN against ANY of their existing trusted devices,
+    then registers the new fingerprint as trusted.
+    """
+    data         = request.get_json() or {}
+    new_fp       = data.get('device_fp', '')
+    pin          = str(data.get('pin', ''))
+
+    if not new_fp or not pin:
+        return jsonify({'success': False, 'message': 'Missing data.'}), 400
+
+    from app.models import StudentDevice
+    from werkzeug.security import check_password_hash
+
+    # Check PIN against ALL their existing devices
+    existing_devices = StudentDevice.query.filter_by(
+        student_id=current_user.id
+    ).all()
+
+    pin_matched_device = None
+    for device in existing_devices:
+        if device.pin_hash and check_password_hash(device.pin_hash, pin):
+            pin_matched_device = device
+            break
+
+    if not pin_matched_device:
+        return jsonify({
+            'success': False,
+            'message': 'Incorrect PIN. If you forgot your PIN, contact your instructor.'
+        }), 401
+
+    # PIN matched — check if we can add this new fingerprint
+    existing_count = len(existing_devices)
+
+    # Check if this fingerprint already exists 
+    already_exists = StudentDevice.query.filter_by(
+        student_id=current_user.id,
+        fingerprint_hash=new_fp
+    ).first()
+
+    if already_exists:
+        already_exists.trusted = True
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Device re-verified.'})
+
+    if existing_count >= 2:
+        # Replace the OLDEST untrusted device, or oldest overall
+        oldest = StudentDevice.query.filter_by(
+            student_id=current_user.id
+        ).order_by(StudentDevice.created_at.asc()).first()
+
+        oldest.fingerprint_hash = new_fp
+        oldest.trusted          = True
+        oldest.last_seen_at     = datetime.utcnow()
+        oldest.pin_hash         = pin_matched_device.pin_hash  # carry PIN over
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Device recovered successfully.'})
+
+    # Under limit — just add it
+    from app.utils.device_trust import get_or_register_device, trust_device
+    info = get_or_register_device(
+        current_user.id, new_fp,
+        request.headers.get('User-Agent', ''),
+        get_client_ip()
+    )
+    # Carry the PIN over from the matched device
+    new_device = StudentDevice.query.get(info['device_id'])
+    new_device.pin_hash = pin_matched_device.pin_hash
+    new_device.trusted  = True
+    db.session.commit()
+
+    return jsonify({'success': True, 'message': 'Device recovered successfully.'})
