@@ -26,7 +26,6 @@ def make_celery(app) -> Celery:
                 return self.run(*args, **kwargs)
 
     celery.Task = ContextTask
-    
-    # Save the celery instance to the Flask app
-    app.extensions["celery"] = celery 
+    celery.set_default()  # ensures @shared_task always binds to this instance
+    app.extensions["celery"] = celery
     return celery

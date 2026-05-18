@@ -1,25 +1,22 @@
 from app import create_app
 from celery.schedules import crontab
 
-# Initialize the Flask App
+# Initialize the Flask app
 flask_app = create_app()
 
-# Retrieve the Celery instance we saved in extensions
+# Retrieve the Celery instance saved in extensions
 celery = flask_app.extensions["celery"]
 
-# Import tasks so the worker registers them
-import app.tasks.sheet_tasks 
+# Import tasks AFTER make_celery() has run so @shared_task binds correctly
+import app.tasks.sheet_tasks
 
-# Configure the Beat Schedule
+# Only the 5-minute student sync runs via Beat.
+# The 9 PM attendance sync is owned by APScheduler (scheduler.py) which
+# also handles absence recording — running both would cause double sheet syncs.
 celery.conf.beat_schedule = {
     "sync-unsynced-students-every-5-min": {
         "task": "app.tasks.sheet_tasks.sync_unsynced_students_task",
         "schedule": crontab(minute="*/5"),
         "options": {"queue": "sheets"},
     },
-    "daily-attendance-sync-9pm": {
-        "task": "app.tasks.sheet_tasks.trigger_daily_attendance",
-        "schedule": crontab(hour=21, minute=0), # 9:00 PM
-        "options": {"queue": "sheets"},
-    }
 }
