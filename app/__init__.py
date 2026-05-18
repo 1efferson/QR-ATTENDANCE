@@ -8,6 +8,7 @@ import logging
 from config import Config
 from flask_wtf.csrf import CSRFProtect
 from authlib.integrations.flask_client import OAuth
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 db = SQLAlchemy()
 login_manager = LoginManager()
@@ -16,14 +17,14 @@ cache = Cache()
 csrf = CSRFProtect()
 oauth = OAuth()
 
-from werkzeug.middleware.proxy_fix import ProxyFix
-
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    # Trust proxy headers for environments like Railway
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
+    # Initialize extensions
     db.init_app(app)
     login_manager.init_app(app)
     migrate.init_app(app, db)
@@ -45,18 +46,21 @@ def create_app(config_class=Config):
 
     os.makedirs(app.instance_path, exist_ok=True)
 
+    # Celery and APScheduler Setup
     if os.environ.get("REDIS_URL"):
         from app.tasks.celery_app import make_celery
         make_celery(app)
         
-        import os as _os
-        if _os.environ.get("WERKZEUG_RUN_MAIN") != "false":
+        # Only start the scheduler in the Master process (PID 1 in Docker/Railway)
+        # This prevents duplicate task execution in Gunicorn workers
+        if os.getpid() == 1:
             from app.scheduler import init_scheduler
             init_scheduler(app)
-            print(">>> APScheduler init called", flush=True) 
+            print(">>> APScheduler started in Master Process (PID 1)", flush=True) 
     else:
-        app.logger.warning("REDIS_URL not set — Celery disabled.Sheets sync will run synchronously.")
+        app.logger.warning("REDIS_URL not set — Celery disabled. Sheets sync will run synchronously.")
 
+    # Blueprint Registration
     from app.routes.auth import auth_bp
     from app.routes.instructor import instructor_bp
     from app.routes.student import student_bp
@@ -68,6 +72,5 @@ def create_app(config_class=Config):
     app.register_blueprint(student_bp, url_prefix='/student')
     app.register_blueprint(main_bp)
     app.register_blueprint(admin_bp, url_prefix='/admin')
-
 
     return app
