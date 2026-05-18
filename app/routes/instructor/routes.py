@@ -99,7 +99,11 @@ def dashboard():
                                    level=None, days=30,
                                    levels=[], batches=batches,
                                    selected_batch=None,
-                                   no_data=True)
+                                   today_checkins=0, expected_students=0,
+                                   today_percentage=0, avg_checkin_times=[],
+                                   top_5_earliest=[], student_percentages=[],
+                                   students_below_80=[], todays_absences=[],
+                                   todays_personal_time=[], no_data=True)
 
         level    = request.args.get('level') or None
         batch_id = request.args.get('batch_id', type=int) or None

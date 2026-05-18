@@ -199,10 +199,22 @@ def create_batch():
 
         # ── Create Google Sheet tab for this batch ─────────────────────────
 
-        
         # ── Fire sheet creation in background — don't block the response ──
-        
-        thread = threading.Thread(target=create_sheet_tab, args=(batch,), daemon=True)
+        app = current_app._get_current_object()
+        _batch_id = batch.id
+
+        def _create_tab_with_context(app_obj, batch_id):
+            with app_obj.app_context():
+                t_batch = Batch.query.get(batch_id)
+                if not t_batch:
+                    logger.error("Sheet tab thread: Batch ID %d not found.", batch_id)
+                    return
+                try:
+                    create_sheet_tab(t_batch)
+                except Exception:
+                    logger.exception("Sheet tab creation failed for Batch ID %d.", batch_id)
+
+        thread = threading.Thread(target=_create_tab_with_context, args=(app, _batch_id), daemon=True)
         thread.start()
         # ──────────────────────────────────────────────────────────────────
 
