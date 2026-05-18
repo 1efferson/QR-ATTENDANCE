@@ -48,8 +48,13 @@ def create_app(config_class=Config):
     if os.environ.get("REDIS_URL"):
         from app.tasks.celery_app import make_celery
         make_celery(app)
-        from app.scheduler import init_scheduler
-        init_scheduler(app) 
+        
+        # Only start APScheduler in the main process, not in gunicorn workers
+        import os as _os
+        if _os.environ.get("WERKZEUG_RUN_MAIN") != "false":
+            from app.scheduler import init_scheduler
+            init_scheduler(app)
+            print(">>> APScheduler init called", flush=True) 
     else:
         app.logger.warning("REDIS_URL not set — Celery disabled.Sheets sync will run synchronously.")
 
