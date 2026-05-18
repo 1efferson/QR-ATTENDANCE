@@ -49,7 +49,6 @@ def create_app(config_class=Config):
         from app.tasks.celery_app import make_celery
         make_celery(app)
         
-        # Only start APScheduler in the main process, not in gunicorn workers
         import os as _os
         if _os.environ.get("WERKZEUG_RUN_MAIN") != "false":
             from app.scheduler import init_scheduler
