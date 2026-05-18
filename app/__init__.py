@@ -45,12 +45,13 @@ def create_app(config_class=Config):
 
     os.makedirs(app.instance_path, exist_ok=True)
 
-    # Only start Celery if a real Redis URL is configured
     if os.environ.get("REDIS_URL"):
         from app.tasks.celery_app import make_celery
         make_celery(app)
+        from app.scheduler import init_scheduler
+        init_scheduler(app) 
     else:
-        app.logger.warning("REDIS_URL not set — Celery disabled, Sheets sync will run synchronously.")
+        app.logger.warning("REDIS_URL not set — Celery disabled.Sheets sync will run synchronously.")
 
     from app.routes.auth import auth_bp
     from app.routes.instructor import instructor_bp
