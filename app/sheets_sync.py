@@ -57,6 +57,15 @@ FIRST_DATE_COL = 6   # Column F — A=name, B=%, C=days present, D=days absent, 
 # ---------------------------------------------------------------------------
 
 def _get_client() -> gspread.Client:
+    import base64
+    import json
+
+    b64 = os.environ.get("GOOGLE_CREDENTIALS_B64")
+    if b64:
+        creds_data = json.loads(base64.b64decode(b64).decode())
+        creds = Credentials.from_service_account_info(creds_data, scopes=SCOPES)
+        return gspread.authorize(creds)
+
     creds_path = os.environ.get("GOOGLE_SHEETS_CREDENTIALS_FILE", "credentials.json")
     if not Path(creds_path).exists():
         raise FileNotFoundError(
