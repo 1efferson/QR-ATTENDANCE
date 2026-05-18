@@ -4,11 +4,12 @@ from datetime import date, datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from sqlalchemy import not_
+from sqlalchemy import not_, select
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy import select, not_
+
 from app import db
 from app.models import Batch, User, Attendance, Absence, Holiday, BatchException
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,6 +26,8 @@ def _run_absence_sync(force=False):
     today_weekday = today.weekday()
     today_start = datetime.combine(today, datetime.min.time())
     tomorrow_start = today_start + timedelta(days=1)
+
+    logger.info("=== Absence Sync triggered for %s (force=%s) ===", today, force)
 
     # Holiday guard: skip entirely if today is a global holiday
     is_global_holiday = db.session.query(Holiday.id).filter(
@@ -43,14 +46,16 @@ def _run_absence_sync(force=False):
         ).all()
     }
 
-    logger.info("=== Daily Sync started for %s ===", today)
-
     active_batches = Batch.query.filter_by(is_active=True).all()
+    logger.info("Found %d active batch(es) total.", len(active_batches))
+
     batches_today = [
         b for b in active_batches
         if any(s.weekday == today_weekday for s in b.schedules)
         and b.id not in excepted_batch_ids
     ]
+
+    logger.info("Found %d batch(es) scheduled for today (%s).", len(batches_today), today.strftime("%A"))
 
     if not batches_today:
         logger.info("No batches scheduled for today. Nothing to do.")
@@ -73,6 +78,11 @@ def _run_absence_sync(force=False):
             not_(User.id.in_(present_stmt)),
         ).all()
 
+        logger.info(
+            "Batch '%s': %d absent student(s) found.",
+            batch.name, len(absent_students)
+        )
+
         if absent_students:
             try:
                 absence_data = [
@@ -91,7 +101,6 @@ def _run_absence_sync(force=False):
 
         # Enqueue sheet sync via Celery
         from app.tasks.sheet_tasks import sync_batch_attendance_task
-
         try:
             sync_batch_attendance_task.apply_async(
                 args=[batch.id, str(today)],
@@ -108,16 +117,27 @@ def _run_absence_sync(force=False):
     return {'skipped': False, 'processed': processed}
 
 
+# ─── Pulse job: remove after confirming scheduler works ─────────────────────
+
+def _test_pulse():
+    print(f">>> SCHEDULER PULSE: {datetime.now().strftime('%H:%M:%S')} — scheduler is alive", flush=True)
+    logger.info("Scheduler pulse check at %s", datetime.now().strftime('%H:%M:%S'))
+
+
+# ─── Init ────────────────────────────────────────────────────────────────────
+
 def init_scheduler(app):
     scheduler = BackgroundScheduler(timezone="Africa/Accra")
 
     def job_with_context():
         with app.app_context():
             try:
+                logger.info(">>> 9PM cron fired — starting absence sync job")
                 _run_absence_sync(force=True)
             except Exception as e:
                 logger.exception("Absence sync job failed: %s", e)
 
+    # Main 9pm job
     scheduler.add_job(
         func=job_with_context,
         trigger=CronTrigger(hour=21, minute=0),
@@ -127,8 +147,21 @@ def init_scheduler(app):
         misfire_grace_time=600,
     )
 
+    # ── TEMPORARY: pulse every 1 minute to confirm scheduler is ticking ──
+    # Delete this block once confirmed working
+    scheduler.add_job(
+        func=_test_pulse,
+        trigger="interval",
+        minutes=1,
+        id="test_pulse_job",
+        name="Temporary Pulse Check",
+        replace_existing=True,
+    )
+    # ─────────────────────────────────────────────────────────────────────
+
     scheduler.start()
     logger.info("APScheduler started — sync at 21:00 Africa/Accra daily.")
+    print(">>> APScheduler started — waiting for jobs", flush=True)
 
     import atexit
     atexit.register(lambda: scheduler.shutdown(wait=False))
