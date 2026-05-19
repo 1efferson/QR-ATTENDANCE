@@ -10,10 +10,8 @@
             <p class="text-sm text-gray-600 mt-2">Point your camera at the instructor's QR code</p>
         </div>
 
-        <!-- Camera Preview-->
         <div id="reader" class="rounded-lg overflow-hidden mb-4"></div>
 
-        <!-- Start Camera Button -->
         <div class="text-center mb-4">
             <button id="startBtn"
                     class="bg-indigo-600 text-white px-6 py-3 rounded-md hover:bg-indigo-700 font-medium">
@@ -21,15 +19,12 @@
             </button>
         </div>
 
-        <!-- Status Messages -->
         <div id="status" class="text-center mb-4">
             <p class="text-sm text-gray-500">Press the button above to start scanning</p>
         </div>
 
-        <!-- Success/Error Messages -->
         <div id="message" class="hidden mb-4"></div>
 
-        <!-- Manual Entry (backup) -->
         <details class="mt-4">
             <summary class="cursor-pointer text-sm text-gray-600 hover:text-gray-800">
                 Can't scan? Enter code manually
@@ -46,7 +41,6 @@
             </form>
         </details>
 
-        <!-- View History Link -->
         <div class="mt-6 text-center">
             <a href="{{ url_for('student.history') }}"
                class="text-sm text-indigo-600 hover:text-indigo-800">
@@ -66,14 +60,21 @@ const startBtn = document.getElementById('startBtn');
 const html5QrCode = new Html5Qrcode("reader");
 
 function showMessage(type, text) {
-    messageDiv.className = `p-4 rounded-md ${type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`;
+    if (type === 'success') {
+        messageDiv.className = 'p-4 rounded-md bg-green-50 text-green-700';
+    } else if (type === 'warning') {
+        messageDiv.className = 'p-4 rounded-md bg-yellow-50 text-yellow-700';
+    } else if (type === 'critical') {
+        messageDiv.className = 'p-4 rounded-md bg-red-100 text-red-800 border border-red-300 font-bold';
+    } else {
+        messageDiv.className = 'p-4 rounded-md bg-red-50 text-red-700';
+    }
     messageDiv.textContent = text;
     messageDiv.classList.remove('hidden');
 }
 
 async function submitAttendance(content) {
-    // Pull device fingerprint collected on page load
-    const deviceFp = sessionStorage.getItem('device_fp') || '';
+    const deviceFp = sessionStorage.getItem('device_fp') || localStorage.getItem('device_fp') || '';
 
     const response = await fetch('{{ url_for("student.mark_attendance") }}', {
         method : 'POST',
@@ -95,9 +96,7 @@ async function submitAttendance(content) {
         return;
     }
 
-    // Handle device actions returned by the server
     if (result.action === 'onboarding') {
-        // Store device_id so onboarding page can set the PIN
         sessionStorage.setItem('pending_device_id', result.device_id);
         window.location.href = '{{ url_for("student.onboarding") }}';
         return;
@@ -106,15 +105,41 @@ async function submitAttendance(content) {
     if (result.action === 'verify_pin') {
         sessionStorage.setItem('pending_device_id', result.device_id);
         sessionStorage.setItem('pending_fp', deviceFp);
+        // FIX 2: Cache the scanned code so we don't force a re-scan upon successful PIN verification
+        sessionStorage.setItem('pending_qr_content', content);
         showPinPrompt(result.has_pin);
         return;
     }
 
+    if (result.action === 'recovery') {
+        showMessage('warning', `⚠️ ${result.message || "Device not recognized. Redirecting to recovery step..."}`);
+        setTimeout(() => {
+            window.location.href = '{{ url_for("student.onboarding") }}?flow=recovery';
+        }, 2500);
+        return;
+    }
+
+    if (result.action === 'device_taken') {
+        await html5QrCode.stop().catch(() => {});
+        statusDiv.innerHTML = '<p class="text-sm text-red-600">Scanning Process Paused</p>';
+        showMessage('critical', `🚨 ${result.message || "Device registered to another student account."}`);
+        return;
+    }
+
+    if (result.action === 'device_limit_reached') {
+        showMessage('error', `❌ ${result.message || "Device slot limit reached."}`);
+        setTimeout(() => {
+            window.location.href = '{{ url_for("student.onboarding") }}?flow=recovery';
+        }, 2500);
+        return;
+    }
+
     showMessage('error', `❌ ${result.message}`);
-    if (html5QrCode.getState() !== 2) setTimeout(() => startScanner(), 3000);
+    if (html5QrCode.getState() !== 2) {
+        setTimeout(() => startScanner(), 3000);
+    }
 }
 
-// Inline PIN prompt — shown on the scan page itself, no redirect needed
 function showPinPrompt(hasPin) {
     const msg = hasPin
         ? 'Enter your device PIN to continue:'
@@ -126,11 +151,13 @@ function showPinPrompt(hasPin) {
         return;
     }
 
+    // FIX 1: Appended a dedicated #pinError placeholder element to preserve the input DOM structure on validation failures
     messageDiv.innerHTML = `
         <p class="text-sm text-gray-700 mb-2">${msg}</p>
         <input id="pinInput" type="password" inputmode="numeric" maxlength="6"
                class="w-full px-3 py-2 border border-gray-300 rounded-md text-center text-xl tracking-widest mb-2"
                placeholder="······">
+        <p id="pinError" class="text-xs text-red-600 font-medium hidden mb-2"></p>
         <button onclick="submitPin()"
                 class="w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700">
             Verify
@@ -142,10 +169,14 @@ function showPinPrompt(hasPin) {
 
 async function submitPin() {
     const pin      = document.getElementById('pinInput')?.value;
-    const deviceFp = sessionStorage.getItem('pending_fp') || sessionStorage.getItem('device_fp');
+    const deviceFp = sessionStorage.getItem('pending_fp') || sessionStorage.getItem('device_fp') || localStorage.getItem('device_fp');
+    const errorEl  = document.getElementById('pinError');
 
     if (!pin || pin.length < 4) {
-        showMessage('error', 'PIN must be at least 4 digits.');
+        if (errorEl) {
+            errorEl.textContent = '❌ PIN must be at least 4 digits.';
+            errorEl.classList.remove('hidden');
+        }
         return;
     }
 
@@ -160,10 +191,29 @@ async function submitPin() {
     const data = await res.json();
 
     if (data.success) {
-        showMessage('success', '✓ Device verified. Please scan again.');
-        setTimeout(() => startScanner(), 1500);
+        showMessage('success', '✓ Device verified. Submitting attendance records...');
+        
+        //  Automatically resubmit the previously scanned code string instead of forcing another physical scan
+        const cachedContent = sessionStorage.getItem('pending_qr_content');
+        if (cachedContent) {
+            sessionStorage.removeItem('pending_qr_content');
+            setTimeout(() => submitAttendance(cachedContent), 1200);
+        } else {
+            setTimeout(() => startScanner(), 1200);
+        }
     } else {
-        showMessage('error', '❌ Incorrect PIN. Try again.');
+        // FIX 1: Safely write to the sub-element without destroying the user input box or verify button
+        if (errorEl) {
+            errorEl.textContent = `❌ ${data.message || "Incorrect PIN. Try again."}`;
+            errorEl.classList.remove('hidden');
+            const inputField = document.getElementById('pinInput');
+            if (inputField) {
+                inputField.value = '';
+                inputField.focus();
+            }
+        } else {
+            showMessage('error', '❌ Incorrect PIN. Try again.');
+        }
     }
 }
 
@@ -183,20 +233,18 @@ async function startScanner() {
         );
         statusDiv.innerHTML = '<p class="text-sm text-green-600">✓ Camera ready</p>';
     } catch (err) {
-        statusDiv.innerHTML = '<p class="text-sm text-red-600">❌ Camera access denied,  </p>';
+        statusDiv.innerHTML = '<p class="text-sm text-red-600">❌ Camera access denied.</p>';
         startBtn.classList.remove('hidden');
     }
 }
 
 startBtn.addEventListener('click', startScanner);
 
-// Manual Form Logic
 document.getElementById('manualForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const code = document.getElementById('manualCode').value.trim();
     if (!code) return;
 
-    // Stop scanner if it's running
     await html5QrCode.stop().catch(() => {});
     await submitAttendance(code);
 });
