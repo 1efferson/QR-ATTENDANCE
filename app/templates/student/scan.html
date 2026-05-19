@@ -102,12 +102,16 @@ async function submitAttendance(content) {
         return;
     }
 
-    if (result.action === 'verify_pin') {
+     // Catch BOTH pin verification and missing-cookie recovery actions
+    if (result.action === 'verify_pin' || result.action === 'prompt_recovery') {
         sessionStorage.setItem('pending_device_id', result.device_id);
         sessionStorage.setItem('pending_fp', deviceFp);
-        // FIX 2: Cache the scanned code so we don't force a re-scan upon successful PIN verification
         sessionStorage.setItem('pending_qr_content', content);
-        showPinPrompt(result.has_pin);
+        
+        // If the backend doesn't explicitly pass has_pin during a prompt_recovery, 
+        // we safely default to true since old users already have one.
+        const hasPin = result.has_pin !== false; 
+        showPinPrompt(hasPin);
         return;
     }
 
