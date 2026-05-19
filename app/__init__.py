@@ -56,7 +56,7 @@ def create_app(config_class=Config):
         if os.getpid() == 1:
             from app.scheduler import init_scheduler
             init_scheduler(app)
-            print(">>> APScheduler started in Master Process (PID 1)", flush=True) 
+    
     else:
         app.logger.warning("REDIS_URL not set — Celery disabled. Sheets sync will run synchronously.")
 

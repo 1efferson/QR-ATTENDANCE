@@ -117,11 +117,6 @@ def _run_absence_sync(force=False):
     return {'skipped': False, 'processed': processed}
 
 
-# ─── Pulse job: remove after confirming scheduler works ─────────────────────
-
-def _test_pulse():
-    print(f">>> SCHEDULER PULSE: {datetime.now().strftime('%H:%M:%S')} — scheduler is alive", flush=True)
-    logger.info("Scheduler pulse check at %s", datetime.now().strftime('%H:%M:%S'))
 
 
 # ─── Init ────────────────────────────────────────────────────────────────────
@@ -147,21 +142,10 @@ def init_scheduler(app):
         misfire_grace_time=600,
     )
 
-    # ── TEMPORARY: pulse every 1 minute to confirm scheduler is ticking ──
-    # Delete this block once confirmed working
-    scheduler.add_job(
-        func=_test_pulse,
-        trigger="interval",
-        minutes=1,
-        id="test_pulse_job",
-        name="Temporary Pulse Check",
-        replace_existing=True,
-    )
-    # ─────────────────────────────────────────────────────────────────────
 
     scheduler.start()
     logger.info("APScheduler started — sync at 21:00 Africa/Accra daily.")
-    print(">>> APScheduler started — waiting for jobs", flush=True)
+    
 
     import atexit
     atexit.register(lambda: scheduler.shutdown(wait=False))
