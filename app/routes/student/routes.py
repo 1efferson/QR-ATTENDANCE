@@ -11,9 +11,14 @@ from sqlalchemy.exc import IntegrityError
 from math import ceil
 from datetime import datetime as _dt
 from app.utils.attendance_guard import verify_attendance_scan, DEVICE_COOKIE_NAME
-from app.utils.device_trust import set_device_pin, verify_device_pin
 from app.utils.qr_tokens import validate_qr_token
 from app.models import StudentDevice
+from app.utils.device_trust import (
+    set_device_pin,
+    verify_device_pin,
+    verify_pin_by_student,
+    replace_device_fingerprint
+)
 
 logger = logging.getLogger(__name__)
 
@@ -101,13 +106,12 @@ def mark_attendance():
             }), 403
 
         if action == 'prompt_recovery':
-            # Cookie is gone and fingerprint doesn't match any trusted device.
-            # Client still sends whatever fp it has — used in /device/recover
-            # to re-link the account once PIN is verified.
             return jsonify({
-                'success': False,
-                'action' : 'recovery',
-                'message': 'Device not recognized. Please verify your PIN to continue.',
+                'success'  : False,
+                'action'   : 'prompt_recovery',
+                'message'  : 'Device not recognized. Please verify your PIN to continue.',
+                'has_pin'  : True,
+                'device_id': guard.get('device_id'),
             }), 403
 
         if action == 'device_taken':
@@ -248,13 +252,50 @@ def device_verify_pin():
     fp_hash = data.get('device_fp', '')
     pin     = str(data.get('pin', ''))
 
-    if not fp_hash or not pin:
-        return jsonify({'success': False, 'message': 'Missing device or PIN.'}), 400
+    if not pin:
+        return jsonify({
+            'success': False,
+            'message': 'PIN required.'
+        }), 400
 
-    ok = verify_device_pin(current_user.id, fp_hash, pin)
-    if ok:
-        return jsonify({'success': True, 'message': 'Device verified.'})
-    return jsonify({'success': False, 'message': 'Incorrect PIN.'}), 401
+    verified = False
+
+    # ── Normal path: known fingerprint
+    if fp_hash:
+        verified = verify_device_pin(
+            current_user.id,
+            fp_hash,
+            pin
+        )
+
+    # ── Recovery path: cookies cleared / fingerprint changed
+    if not verified and fp_hash:
+        matched_device = verify_pin_by_student(
+            current_user.id,
+            pin
+        )
+
+        if matched_device:
+            replaced = replace_device_fingerprint(
+                matched_device.id,
+                current_user.id,
+                fp_hash,
+                get_client_ip()
+            )
+
+            if replaced:
+                verified = True
+
+    if verified:
+        return jsonify({
+            'success': True,
+            'message': 'Device verified.'
+        })
+
+    return jsonify({
+        'success': False,
+        'message': 'Incorrect PIN.'
+    }), 401
 
 
 # ── Attendance history ────────────────────────────────────────────────

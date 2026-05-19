@@ -115,9 +115,11 @@ async function registerDevice() {
     const nextBtn  = document.getElementById('fp-next-btn');
 
     try {
-        deviceFp = sessionStorage.getItem('device_fp') 
-                   || await collectDeviceFingerprint();
-        sessionStorage.setItem('device_fp', deviceFp);
+        deviceFp = localStorage.getItem('device_fp')
+                || sessionStorage.getItem('device_fp') 
+                || await collectDeviceFingerprint();
+        localStorage.setItem('device_fp', deviceFp);
+        sessionStorage.setItem('device_fp', deviceFp);       
 
         const res  = await fetch('/student/device/register', {
             method : 'POST',

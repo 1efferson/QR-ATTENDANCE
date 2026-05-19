@@ -7,7 +7,9 @@
     <div class="bg-white shadow-md rounded-lg p-6">
         <div class="text-center mb-6">
             <h1 class="text-2xl font-bold text-gray-800">Scan QR Code</h1>
-            <p class="text-sm text-gray-600 mt-2">Point your camera at the instructor's QR code</p>
+            <p class="text-sm text-gray-600 mt-2">
+                Point your camera at the instructor's QR code
+            </p>
         </div>
 
         <div id="reader" class="rounded-lg overflow-hidden mb-4"></div>
@@ -20,7 +22,9 @@
         </div>
 
         <div id="status" class="text-center mb-4">
-            <p class="text-sm text-gray-500">Press the button above to start scanning</p>
+            <p class="text-sm text-gray-500">
+                Press the button above to start scanning
+            </p>
         </div>
 
         <div id="message" class="hidden mb-4"></div>
@@ -29,11 +33,13 @@
             <summary class="cursor-pointer text-sm text-gray-600 hover:text-gray-800">
                 Can't scan? Enter code manually
             </summary>
+
             <form id="manualForm" class="mt-4 space-y-3">
                 <input type="text"
                        id="manualCode"
                        placeholder="Enter session code"
                        class="w-full px-4 py-2 border border-gray-300 rounded-md">
+
                 <button type="submit"
                         class="w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700">
                     Submit Code
@@ -49,16 +55,23 @@
         </div>
     </div>
 </div>
+
 {% include 'student/_bottom_bar.html' %}
+
+<script src="{{ url_for('static', filename='js/device_fingerprint.js') }}"></script>
 
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
 <script>
 const messageDiv = document.getElementById('message');
-const statusDiv = document.getElementById('status');
-const startBtn = document.getElementById('startBtn');
+const statusDiv  = document.getElementById('status');
+const startBtn   = document.getElementById('startBtn');
+
 const html5QrCode = new Html5Qrcode("reader");
 
+/* ─────────────────────────────────────────────────────────────
+   UI Helpers
+───────────────────────────────────────────────────────────── */
 function showMessage(type, text) {
     if (type === 'success') {
         messageDiv.className = 'p-4 rounded-md bg-green-50 text-green-700';
@@ -69,101 +82,158 @@ function showMessage(type, text) {
     } else {
         messageDiv.className = 'p-4 rounded-md bg-red-50 text-red-700';
     }
+
     messageDiv.textContent = text;
     messageDiv.classList.remove('hidden');
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Fingerprint Handling
+───────────────────────────────────────────────────────────── */
+async function getDeviceFingerprint() {
+    let deviceFp = sessionStorage.getItem('device_fp') || localStorage.getItem('device_fp');
+
+    // Storage cleared? Regenerate fingerprint
+    if (!deviceFp && window.collectDeviceFingerprint) {
+        try {
+            deviceFp = await collectDeviceFingerprint();
+            sessionStorage.setItem('device_fp', deviceFp);
+            localStorage.setItem('device_fp', deviceFp);
+            console.log("Fingerprint regenerated:", deviceFp);
+        } catch (err) {
+            console.error("Fingerprint generation failed:", err);
+            deviceFp = '';
+        }
+    }
+    return deviceFp || '';
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Attendance Submission
+───────────────────────────────────────────────────────────── */
 async function submitAttendance(content) {
-    const deviceFp = sessionStorage.getItem('device_fp') || localStorage.getItem('device_fp') || '';
+    const deviceFp = await getDeviceFingerprint();
+    
+    // Status Update before processing
+    statusDiv.innerHTML = '<p class="text-sm text-blue-600">Processing attendance…</p>';
 
-    const response = await fetch('{{ url_for("student.mark_attendance") }}', {
-        method : 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken'  : '{{ csrf_token() }}'
-        },
-        body: JSON.stringify({
-            qr_content: content,
-            device_fp : deviceFp,
-        })
-    });
+    try {
+        const response = await fetch('{{ url_for("student.mark_attendance") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({
+                qr_content: content,
+                device_fp: deviceFp,
+            })
+        });
 
-    const result = await response.json();
+        // Catch non-JSON server errors seamlessly
+        const result = await response.json().catch(() => ({
+            success: false, message: `Server error (${response.status}).`
+        }));
 
-    if (result.success) {
-        showMessage('success', `✓ ${result.message}`);
-        setTimeout(() => window.location.href = '{{ url_for("student.history") }}', 2000);
-        return;
-    }
+        console.log("Attendance response:", result);
 
-    if (result.action === 'onboarding') {
-        sessionStorage.setItem('pending_device_id', result.device_id);
-        window.location.href = '{{ url_for("student.onboarding") }}';
-        return;
-    }
+        /* ─────────────────────────────────────────────
+           SUCCESS
+        ───────────────────────────────────────────── */
+        if (result.success) {
+            showMessage('success', `✓ ${result.message}`);
+            setTimeout(() => { window.location.href = '{{ url_for("student.history") }}'; }, 2000);
+            return;
+        }
 
-     // Catch BOTH pin verification and missing-cookie recovery actions
-    if (result.action === 'verify_pin' || result.action === 'prompt_recovery') {
-        sessionStorage.setItem('pending_device_id', result.device_id);
-        sessionStorage.setItem('pending_fp', deviceFp);
-        sessionStorage.setItem('pending_qr_content', content);
-        
-        // If the backend doesn't explicitly pass has_pin during a prompt_recovery, 
-        // we safely default to true since old users already have one.
-        const hasPin = result.has_pin !== false; 
-        showPinPrompt(hasPin);
-        return;
-    }
+        /* ─────────────────────────────────────────────
+           ONBOARDING
+        ───────────────────────────────────────────── */
+        if (result.action === 'onboarding') {
+            sessionStorage.setItem('pending_device_id', result.device_id);
+            window.location.href = '{{ url_for("student.onboarding") }}';
+            return;
+        }
 
-    if (result.action === 'recovery') {
-        showMessage('warning', `⚠️ ${result.message || "Device not recognized. Redirecting to recovery step..."}`);
-        setTimeout(() => {
-            window.location.href = '{{ url_for("student.onboarding") }}?flow=recovery';
-        }, 2500);
-        return;
-    }
+        /* ─────────────────────────────────────────────
+           PIN / RECOVERY FLOW
+        ───────────────────────────────────────────── */
+        if (result.action === 'verify_pin' || result.action === 'prompt_recovery') {
+            // Stop camera and clear status so PIN prompt is cleanly visible
+            await html5QrCode.stop().catch(() => {});
+            statusDiv.innerHTML = '<p class="text-sm text-gray-500">Verify your identity to continue.</p>';
 
-    if (result.action === 'device_taken') {
-        await html5QrCode.stop().catch(() => {});
-        statusDiv.innerHTML = '<p class="text-sm text-red-600">Scanning Process Paused</p>';
-        showMessage('critical', `🚨 ${result.message || "Device registered to another student account."}`);
-        return;
-    }
+            sessionStorage.setItem('pending_device_id', result.device_id || '');
+            sessionStorage.setItem('pending_fp', deviceFp);
+            sessionStorage.setItem('pending_qr_content', content);
 
-    if (result.action === 'device_limit_reached') {
-        showMessage('error', `❌ ${result.message || "Device slot limit reached."}`);
-        setTimeout(() => {
-            window.location.href = '{{ url_for("student.onboarding") }}?flow=recovery';
-        }, 2500);
-        return;
-    }
+            const hasPin = result.has_pin !== false;
+            showPinPrompt(hasPin);
+            return;
+        }
 
-    showMessage('error', `❌ ${result.message}`);
-    if (html5QrCode.getState() !== 2) {
-        setTimeout(() => startScanner(), 3000);
+        /* ─────────────────────────────────────────────
+           DEVICE TAKEN
+        ───────────────────────────────────────────── */
+        if (result.action === 'device_taken') {
+            await html5QrCode.stop().catch(() => {});
+            statusDiv.innerHTML = '<p class="text-sm text-red-600">Scanning Process Paused</p>';
+            showMessage('critical', `🚨 ${result.message || "Device registered to another student account."}`);
+            return;
+        }
+
+        /* ─────────────────────────────────────────────
+           DEVICE LIMIT
+        ───────────────────────────────────────────── */
+        if (result.action === 'device_limit_reached') {
+            showMessage('error', `❌ ${result.message || "Device slot limit reached."}`);
+            return;
+        }
+
+        /* ─────────────────────────────────────────────
+           GENERIC ERROR
+        ───────────────────────────────────────────── */
+        showMessage('error', `❌ ${result.message || "Attendance failed."}`);
+        if (html5QrCode.getState() !== 2) {
+            setTimeout(() => startScanner(), 3000);
+        }
+
+    } catch (err) {
+        // Network/Execution errors caught here
+        console.error('Attendance error:', err);
+        showMessage('error', `❌ ${err.message || 'Connection lost. Please try again.'}`);
+        statusDiv.innerHTML = '<p class="text-sm text-gray-500">Tap the button to retry.</p>';
+        startBtn.classList.remove('hidden');
     }
 }
 
+/* ─────────────────────────────────────────────────────────────
+   PIN POPUP
+───────────────────────────────────────────────────────────── */
 function showPinPrompt(hasPin) {
     const msg = hasPin
         ? 'Enter your device PIN to continue:'
-        : 'This device needs a PIN. Please go through onboarding first.';
+        : 'This device needs a PIN. Please complete onboarding first.';
 
     if (!hasPin) {
         showMessage('error', msg);
-        setTimeout(() => window.location.href = '{{ url_for("student.onboarding") }}', 2000);
+        setTimeout(() => { window.location.href = '{{ url_for("student.onboarding") }}'; }, 2000);
         return;
     }
 
-    // FIX 1: Appended a dedicated #pinError placeholder element to preserve the input DOM structure on validation failures
     messageDiv.innerHTML = `
         <p class="text-sm text-gray-700 mb-2">${msg}</p>
-        <input id="pinInput" type="password" inputmode="numeric" maxlength="6"
-               class="w-full px-3 py-2 border border-gray-300 rounded-md text-center text-xl tracking-widest mb-2"
-               placeholder="······">
+        <input
+            id="pinInput"
+            type="password"
+            inputmode="numeric"
+            maxlength="6"
+            class="w-full px-3 py-2 border border-gray-300 rounded-md text-center text-xl tracking-widest mb-2"
+            placeholder="······">
         <p id="pinError" class="text-xs text-red-600 font-medium hidden mb-2"></p>
-        <button onclick="submitPin()"
-                class="w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700">
+        <button
+            onclick="submitPin()"
+            class="w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700">
             Verify
         </button>
     `;
@@ -171,10 +241,13 @@ function showPinPrompt(hasPin) {
     messageDiv.classList.remove('hidden');
 }
 
+/* ─────────────────────────────────────────────────────────────
+   PIN SUBMISSION
+───────────────────────────────────────────────────────────── */
 async function submitPin() {
-    const pin      = document.getElementById('pinInput')?.value;
-    const deviceFp = sessionStorage.getItem('pending_fp') || sessionStorage.getItem('device_fp') || localStorage.getItem('device_fp');
-    const errorEl  = document.getElementById('pinError');
+    const pin = document.getElementById('pinInput')?.value;
+    const deviceFp = sessionStorage.getItem('pending_fp') || await getDeviceFingerprint();
+    const errorEl = document.getElementById('pinError');
 
     if (!pin || pin.length < 4) {
         if (errorEl) {
@@ -184,43 +257,46 @@ async function submitPin() {
         return;
     }
 
-    const res  = await fetch('{{ url_for("student.device_verify_pin") }}', {
-        method : 'POST',
+    const res = await fetch('{{ url_for("student.device_verify_pin") }}', {
+        method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRFToken'  : '{{ csrf_token() }}'
+            'X-CSRFToken': '{{ csrf_token() }}'
         },
         body: JSON.stringify({ device_fp: deviceFp, pin })
     });
+
     const data = await res.json();
 
     if (data.success) {
-        showMessage('success', '✓ Device verified. Submitting attendance records...');
-        
-        //  Automatically resubmit the previously scanned code string instead of forcing another physical scan
+        showMessage('success', '✓ Device verified. Submitting attendance...');
         const cachedContent = sessionStorage.getItem('pending_qr_content');
+
         if (cachedContent) {
             sessionStorage.removeItem('pending_qr_content');
-            setTimeout(() => submitAttendance(cachedContent), 1200);
+            setTimeout(() => { submitAttendance(cachedContent); }, 1200);
         } else {
-            setTimeout(() => startScanner(), 1200);
+            setTimeout(() => { startScanner(); }, 1200);
+        }
+        return;
+    }
+
+    if (errorEl) {
+        errorEl.textContent = `❌ ${data.message || "Incorrect PIN. Try again."}`;
+        errorEl.classList.remove('hidden');
+        const inputField = document.getElementById('pinInput');
+        if (inputField) {
+            inputField.value = '';
+            inputField.focus();
         }
     } else {
-        // FIX 1: Safely write to the sub-element without destroying the user input box or verify button
-        if (errorEl) {
-            errorEl.textContent = `❌ ${data.message || "Incorrect PIN. Try again."}`;
-            errorEl.classList.remove('hidden');
-            const inputField = document.getElementById('pinInput');
-            if (inputField) {
-                inputField.value = '';
-                inputField.focus();
-            }
-        } else {
-            showMessage('error', '❌ Incorrect PIN. Try again.');
-        }
+        showMessage('error', '❌ Incorrect PIN. Try again.');
     }
 }
 
+/* ─────────────────────────────────────────────────────────────
+   CAMERA START
+───────────────────────────────────────────────────────────── */
 async function startScanner() {
     startBtn.classList.add('hidden');
     statusDiv.innerHTML = '<p class="text-sm text-blue-600">Starting camera...</p>';
@@ -233,7 +309,7 @@ async function startScanner() {
                 await html5QrCode.stop().catch(() => {});
                 await submitAttendance(decodedText);
             },
-            () => { /* scanning... */ }
+            () => {}
         );
         statusDiv.innerHTML = '<p class="text-sm text-green-600">✓ Camera ready</p>';
     } catch (err) {
@@ -242,6 +318,9 @@ async function startScanner() {
     }
 }
 
+/* ─────────────────────────────────────────────────────────────
+   EVENTS
+───────────────────────────────────────────────────────────── */
 startBtn.addEventListener('click', startScanner);
 
 document.getElementById('manualForm').addEventListener('submit', async (e) => {
