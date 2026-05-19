@@ -20,8 +20,8 @@ async function collectDeviceFingerprint() {
     } catch (_) {}
 
     try {
-        const gl        = document.createElement('canvas').getContext('webgl');
-        const dbg       = gl?.getExtension('WEBGL_debug_renderer_info');
+        const gl  = document.createElement('canvas').getContext('webgl');
+        const dbg = gl?.getExtension('WEBGL_debug_renderer_info');
         if (dbg) {
             c.gpu = gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL);
         }
@@ -35,15 +35,31 @@ async function collectDeviceFingerprint() {
     return hash;
 }
 
-// Run once on load, store in sessionStorage so scan.html can read it
+// Run once on load — store in BOTH localStorage (persistent) and sessionStorage (fast access)
+// localStorage survives browser close; sessionStorage is faster to read during the session.
+// If localStorage already has a value from a previous session, reuse it so the fingerprint
+// stays consistent even if minor browser characteristics drift between visits.
 window.addEventListener('DOMContentLoaded', async () => {
     try {
-        const hash = await collectDeviceFingerprint();
+        // Prefer the stored value — recomputing can produce a slightly different hash
+        // if the browser has updated since last visit.
+        const stored = localStorage.getItem('device_fp') || sessionStorage.getItem('device_fp');
+
+        let hash;
+        if (stored) {
+            hash = stored;
+        } else {
+            hash = await collectDeviceFingerprint();
+        }
+
+        // Keep both storages in sync
+        localStorage.setItem('device_fp', hash);
         sessionStorage.setItem('device_fp', hash);
 
         // If there's a hidden input on this page (login / register), fill it
         const input = document.getElementById('device_fingerprint');
         if (input) input.value = hash;
+
     } catch (e) {
         console.warn('Fingerprint collection failed:', e);
     }
