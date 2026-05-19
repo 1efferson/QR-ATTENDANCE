@@ -1,4 +1,4 @@
-from flask import render_template, redirect, url_for, flash, request, jsonify, current_app
+from flask import render_template, redirect, url_for, flash, request, jsonify, current_app, make_response
 from flask_login import login_required, current_user
 from . import student_bp
 from app import csrf
@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.exc import IntegrityError
 from math import ceil
 from datetime import datetime as _dt
-from app.utils.attendance_guard import verify_attendance_scan
+from app.utils.attendance_guard import verify_attendance_scan, DEVICE_COOKIE_NAME
 from app.utils.device_trust import set_device_pin, verify_device_pin
 from app.utils.qr_tokens import validate_qr_token
 from app.models import StudentDevice
@@ -100,6 +100,23 @@ def mark_attendance():
                 'message'  : 'Please verify your device PIN.',
             }), 403
 
+        if action == 'prompt_recovery':
+            # Cookie is gone and fingerprint doesn't match any trusted device.
+            # Client still sends whatever fp it has — used in /device/recover
+            # to re-link the account once PIN is verified.
+            return jsonify({
+                'success': False,
+                'action' : 'recovery',
+                'message': 'Device not recognized. Please verify your PIN to continue.',
+            }), 403
+
+        if action == 'device_taken':
+            return jsonify({
+                'success': False,
+                'action' : 'device_taken',
+                'message': 'This device is registered to another student. Contact your instructor.',
+            }), 403
+
         if action == 'device_limit_reached':
             return jsonify({
                 'success': False,
@@ -156,12 +173,29 @@ def mark_attendance():
         logger.error(f"DB Error during scan for user {current_user.id}: {e}")
         return jsonify({'success': False, 'message': 'Database error. Try again.'}), 500
 
+    # 6 ── Build response, set device cookie if this was a fingerprint-verified scan
     message = "Attendance marked!" if not is_personal_time else "Personal scan recorded."
-    return jsonify({
+    resp = make_response(jsonify({
         'success'         : True,
         'message'         : f'{message} Welcome, {current_user.name}.',
         'is_personal_time': is_personal_time,
-    })
+    }))
+
+    if guard.get('set_cookie') and guard.get('device_id'):
+        resp.set_cookie(
+            DEVICE_COOKIE_NAME,
+            str(guard['device_id']),
+            max_age=60 * 60 * 24 * 365,   # 1 year
+            httponly=True,
+            samesite='Lax',
+            secure=not current_app.debug,  # HTTPS only in production
+        )
+        logger.info(
+            "Device cookie set for student %s → device %s",
+            current_user.id, guard['device_id']
+        )
+
+    return resp
 
 
 # ── Onboarding ────────────────────────────────────────────────────────
@@ -321,6 +355,12 @@ def device_register():
         return jsonify({
             'success': False,
             'message': 'Device limit reached. Contact your instructor.'
+        }), 403
+
+    if info['status'] == 'device_taken':
+        return jsonify({
+            'success': False,
+            'message': 'This device is registered to another student. Contact your instructor.'
         }), 403
 
     other_trusted = StudentDevice.query.filter(
